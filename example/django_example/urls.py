@@ -1,4 +1,4 @@
-"""django_channels_jsonrpc URL Configuration
+"""django_channels_rpc URL Configuration
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/1.10/topics/http/urls/
@@ -14,6 +14,4 @@ Including another URLconf
     2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
 """
 
-urlpatterns = [
-
-]
+urlpatterns = []

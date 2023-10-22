@@ -1,4 +1,4 @@
-from channels_jsonrpc import JsonRpcWebsocketConsumer
+from channels_rpc import JsonRpcWebsocketConsumer
 
 
 class JsonRpcConsumerTest(JsonRpcWebsocketConsumer):
