@@ -6,7 +6,7 @@ readme = "README.md"
 version = "0.1.0"
 
 [tool.poetry.dependencies]
-channels = "^4.0.0"
+channels = {extras = ["daphne"], version = "^4.0.0"}
 python = ">=3.9"
 
 [tool.poetry.group.dev.dependencies]
