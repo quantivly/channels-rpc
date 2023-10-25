@@ -1,4 +1,14 @@
-"""Definition of the :class:`RpcBase` class."""
+"""Definition of the :class:`RpcBase` class.
+
+A JSON-RPC request message can contain three possible elements: The *method*, which
+is a string that names the method to be invoked; *params*, which are objects or arrays
+of values that get passed along as parameters to the destination app; and *id*, a
+string or number that matches the response with the request that it is replying to.
+
+References
+----------
+- https://nonamesecurity.com/learn/what-is-json-rpc/
+"""
 from __future__ import annotations
 
 import json
