@@ -64,7 +64,7 @@ class AsyncRpcBase(RpcBase):
             rpc_id = data.get("id")
             try:
                 is_notification = method_name is not None and rpc_id is None
-                result = await self.__process(data, is_notification)
+                result = await self.__process(data, is_notification=is_notification)
             except JsonRpcError as e:
                 result = e.as_dict()
             except Exception as e:
