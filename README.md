@@ -26,8 +26,6 @@ $ pip install channels-rpc
 
 ## Use
 
-See complete example [here](https://github.com/millerf/channels-rpc/blob/master/example/django_example/), and in particular [consumer.py](https://github.com/millerf/channels-rpc/blob/master/example/django_example/consumer.py)
-
 It is intended to be used as a Websocket consumer. See [documentation](https://channels.readthedocs.io/en/latest/topics/consumers.html#websocketconsumer) except... simplier...
 
 Import JsonRpcWebsocketConsumer, AsyncJsonRpcWebsocketConsumer or AsyncRpcHttpConsumer class and create the consumer
