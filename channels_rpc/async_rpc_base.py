@@ -8,7 +8,12 @@ from typing import Any
 
 from django.conf import settings
 
-from channels_rpc.exceptions import RPC_ERRORS, JsonRpcError, generate_error_response
+from channels_rpc.exceptions import (
+    GENERIC_APPLICATION_ERROR,
+    RPC_ERRORS,
+    JsonRpcError,
+    generate_error_response,
+)
 from channels_rpc.rpc_base import RpcBase
 from channels_rpc.utils import create_json_rpc_frame
 
@@ -67,7 +72,7 @@ class AsyncRpcBase(RpcBase):
                 exception_data = e.args[0] if len(e.args) == 1 else e.args
                 result = generate_error_response(
                     rpc_id=rpc_id,
-                    code=self.GENERIC_APPLICATION_ERROR,
+                    code=GENERIC_APPLICATION_ERROR,
                     message=str(e),
                     data=exception_data,
                 )
