@@ -22,7 +22,7 @@ class AsyncRpcHttpConsumer(AsyncHttpConsumer, RpcBase):
                     None, self.PARSE_ERROR, RPC_ERRORS[self.PARSE_ERROR]
                 )
             else:
-                result, is_notification = self._handle(data)
+                result, is_notification = self.intercept_call(data)
 
             # Set response status code
             # http://www.jsonrpc.org/historical/json-rpc-over-http.html#response-codes

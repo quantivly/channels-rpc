@@ -86,8 +86,8 @@ class RpcBase:
         GENERIC_APPLICATION_ERROR: 500,
     }
 
-    available_rpc_methods: defaultdict = defaultdict(dict)
-    available_rpc_notifications: defaultdict = defaultdict(dict)
+    rpc_methods: defaultdict = defaultdict(dict)
+    rpc_notifications: defaultdict = defaultdict(dict)
 
     @classmethod
     def rpc_method(
@@ -117,7 +117,7 @@ class RpcBase:
         def wrap(f: Callable) -> Callable:
             name = method_name if method_name is not None else f.__name__
             f.options = dict(websocket=websocket, http=http)
-            cls.available_rpc_methods[id(cls)][name] = f
+            cls.rpc_methods[id(cls)][name] = f
             return f
 
         return wrap
@@ -132,7 +132,7 @@ class RpcBase:
             List of RPC methods available for this consumer.
         """
         try:
-            return list(cls.available_rpc_methods[id(cls)].keys())
+            return list(cls.rpc_methods[id(cls)])
         except KeyError:
             return []
 
@@ -164,7 +164,7 @@ class RpcBase:
         def wrap(f):
             name = notification_name if notification_name is not None else f.__name__
             f.options = dict(websocket=websocket, http=http)
-            cls.available_rpc_notifications[id(cls)][name] = f
+            cls.rpc_notifications[id(cls)][name] = f
             return f
 
         return wrap
@@ -179,7 +179,7 @@ class RpcBase:
             List of RPC notifications available for this consumer.
         """
         try:
-            return list(cls.available_rpc_notifications[id(cls)].keys())
+            return list(cls.rpc_notifications[id(cls)])
         except KeyError:
             return []
 
@@ -196,7 +196,7 @@ class RpcBase:
         content = create_json_rpc_frame(method=method, params=params)
         self.send(self.encode_json(content))
 
-    def _get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
+    def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
         """Get the method to call.
 
         Parameters
@@ -236,11 +236,9 @@ class RpcBase:
         try:
             class_id = id(self.__class__)
             if is_notification:
-                method = self.__class__.available_rpc_notifications[class_id][
-                    method_name
-                ]
+                method = self.__class__.rpc_notifications[class_id][method_name]
             else:
-                method = self.__class__.available_rpc_methods[class_id][method_name]
+                method = self.__class__.rpc_methods[class_id][method_name]
             proto = self.scope["type"]
             if not method.options[proto]:
                 msg = f"Method not available through {proto}"
@@ -249,7 +247,7 @@ class RpcBase:
             raise JsonRpcError(rpc_id, self.METHOD_NOT_FOUND) from e
         return method
 
-    def _get_params(self, data: dict[str, Any]) -> dict | list:
+    def get_params(self, data: dict[str, Any]) -> dict | list:
         """Get the parameters to pass to the method.
 
         Parameters
@@ -273,7 +271,7 @@ class RpcBase:
             raise JsonRpcError(rpc_id, self.INVALID_PARAMS)
         return params
 
-    def __process(
+    def process_call(
         self, data: dict[str, Any], *, is_notification: bool = False
     ) -> dict | None:
         """Process the received remote procedure call data.
@@ -290,11 +288,11 @@ class RpcBase:
         dict | None
             Result of the remote procedure call.
         """
-        method = self._get_method(data, is_notification=is_notification)
-        params = self._get_params(data)
+        method = self.get_method(data, is_notification=is_notification)
+        params = self.get_params(data)
         if settings.DEBUG:
             logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
-        result = self.__get_result(method, params)
+        result = self.execute_called_method(method, params)
         # check and pack result
         if not is_notification:
             if settings.DEBUG:
@@ -306,49 +304,54 @@ class RpcBase:
             result = None
         return result
 
-    def _handle(self, data: dict[str, Any]):
-        """
-        Handle
-        :param data:
-        :return:
-        """
-        result = None
-        is_notification = False
+    def intercept_call(self, data: dict[str, Any]) -> tuple[Any, bool]:
+        """Handles calls and notifications.
 
+        Parameters
+        ----------
+        data : dict[str, Any]
+            Received message data.
+
+        Returns
+        -------
+        tuple[Any, bool]
+            Result of the remote procedure call and whether it is a notification.
+        """
         if data is None:
             message = RPC_ERRORS[self.INVALID_REQUEST]
             result = generate_error_response(
                 rpc_id=None, code=self.INVALID_REQUEST, message=message
             )
 
-        elif isinstance(data, dict):
-            method_name = data.get("method")
-            rpc_id = data.get("id")
-            try:
-                is_notification = method_name is not None and rpc_id is None
-                result = self.__process(data, is_notification=is_notification)
-            except JsonRpcError as e:
-                result = e.as_dict()
-            except Exception as e:
-                logger.debug("Application error: %s", e)
-                exception_data = e.args[0] if len(e.args) == 1 else e.args
-                result = generate_error_response(
-                    rpc_id=data.get("id"),
-                    code=GENERIC_APPLICATION_ERROR,
-                    message=str(e),
-                    data=exception_data,
-                )
-        elif isinstance(data, list):
-            # TODO: implement batch calls
-            invalid_call_data = [x for x in data if not isinstance(x, dict)]
-            if invalid_call_data:
-                message = RPC_ERRORS[self.INVALID_REQUEST]
-                result = generate_error_response(
-                    rpc_id=None, code=self.INVALID_REQUEST, message=message
-                )
+        # elif isinstance(data, dict):
+        method_name = data.get("method")
+        rpc_id = data.get("id")
+        is_notification = method_name is not None and rpc_id is None
+        result = None
+        try:
+            result = self.process_call(data, is_notification=is_notification)
+        except JsonRpcError as e:
+            result = e.as_dict()
+        except Exception as e:
+            logger.debug("Application error: %s", e)
+            exception_data = e.args[0] if len(e.args) == 1 else e.args
+            result = generate_error_response(
+                rpc_id=data.get("id"),
+                code=GENERIC_APPLICATION_ERROR,
+                message=str(e),
+                data=exception_data,
+            )
+        # elif isinstance(data, list):
+        #     # TODO: implement batch calls
+        #     invalid_call_data = [x for x in data if not isinstance(x, dict)]
+        #     if invalid_call_data:
+        #         message = RPC_ERRORS[self.INVALID_REQUEST]
+        #         result = generate_error_response(
+        #             rpc_id=None, code=self.INVALID_REQUEST, message=message
+        #         )
         return result, is_notification
 
-    def __get_result(self, method: Callable, params: list | dict) -> Any:
+    def execute_called_method(self, method: Callable, params: list | dict) -> Any:
         """Get the result of the remote procedure call.
 
         Parameters
@@ -383,7 +386,7 @@ class RpcBase:
         data : dict[str, Any]
             Received message data.
         """
-        result, is_notification = self._handle(data)
+        result, is_notification = self.intercept_call(data)
 
         # Send response back only if it is a call, not notification
         if not is_notification:

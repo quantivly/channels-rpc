@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class AsyncRpcBase(RpcBase):
-    async def __get_result(self, method: Callable, params: dict | list) -> Any:
+    async def execute_called_method(self, method: Callable, params: dict | list) -> Any:
         func_args = getfullargspec(method).varkw
         if func_args and "kwargs" in func_args:
             return (
@@ -34,12 +34,14 @@ class AsyncRpcBase(RpcBase):
         else:
             return await method(**params)
 
-    async def __process(self, data: dict[str, Any], *, is_notification: bool = False):
-        method = self._get_method(data, is_notification=is_notification)
-        params = self._get_params(data)
+    async def process_call(
+        self, data: dict[str, Any], *, is_notification: bool = False
+    ):
+        method = self.get_method(data, is_notification=is_notification)
+        params = self.get_params(data)
         if settings.DEBUG:
             logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
-        result = await self.__get_result(method, params)
+        result = await self.execute_called_method(method, params)
         # check and pack result
         if not is_notification:
             if settings.DEBUG:
@@ -51,7 +53,7 @@ class AsyncRpcBase(RpcBase):
             result = None
         return result
 
-    async def _handle(self, data):
+    async def intercept_call(self, data):
         result = None
         is_notification = False
         if data is None:
@@ -64,7 +66,7 @@ class AsyncRpcBase(RpcBase):
             rpc_id = data.get("id")
             try:
                 is_notification = method_name is not None and rpc_id is None
-                result = await self.__process(data, is_notification=is_notification)
+                result = await self.process_call(data, is_notification=is_notification)
             except JsonRpcError as e:
                 result = e.as_dict()
             except Exception as e:
@@ -87,6 +89,6 @@ class AsyncRpcBase(RpcBase):
         return result, is_notification
 
     async def _base_receive_json(self, data: dict[str, Any]) -> None:
-        result, is_notification = await self._handle(data)
+        result, is_notification = await self.intercept_call(data)
         if not is_notification:
             await self.send_json(result)

@@ -5,11 +5,11 @@ from typing import Any
 
 def create_json_rpc_frame(
     rpc_id: int | None = None,
-    result=None,
+    result: Any = None,
     params: dict[str, Any] | None = None,
     method: str | None = None,
     error: dict[str, int | str] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     frame = {"jsonrpc": "2.0"}
     if rpc_id is not None:
         frame["id"] = rpc_id
