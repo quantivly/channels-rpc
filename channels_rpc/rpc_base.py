@@ -241,16 +241,16 @@ class RpcBase:
         rpc_id = data["id"]
         method_name = data["method"]
         if method_name.startswith("_"):
-            raise JsonRpcError(rpc_id, self.METHOD_NOT_FOUND)
+            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
         class_id = id(self.__class__)
         methods = self.rpc_notifications if is_notification else self.rpc_methods
         try:
             method = methods[class_id][method_name]
         except KeyError as e:
-            raise JsonRpcError(rpc_id, self.METHOD_NOT_FOUND) from e
+            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND) from e
         protocol = self.scope["type"]
         if not method.options[protocol]:
-            raise JsonRpcError(rpc_id, self.METHOD_NOT_FOUND)
+            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
         return method
 
     def get_params(self, data: dict[str, Any]) -> dict | list:
