@@ -64,8 +64,8 @@ class AsyncRpcBase(RpcBase):
         elif isinstance(data, dict):
             method_name = data.get("method")
             rpc_id = data.get("id")
+            is_notification = method_name is not None and rpc_id is None
             try:
-                is_notification = method_name is not None and rpc_id is None
                 result = await self.process_call(data, is_notification=is_notification)
             except JsonRpcError as e:
                 result = e.as_dict()
@@ -78,14 +78,14 @@ class AsyncRpcBase(RpcBase):
                     message=str(e),
                     data=exception_data,
                 )
-        elif isinstance(data, list):
-            # TODO: implement batch calls
-            invalid_calls = [x for x in data if not isinstance(x, dict)]
-            if invalid_calls:
-                message = RPC_ERRORS[self.INVALID_REQUEST]
-                result = generate_error_response(
-                    rpc_id=None, code=self.INVALID_REQUEST, message=message
-                )
+        # elif isinstance(data, list):
+        #     # TODO: implement batch calls
+        #     invalid_calls = [x for x in data if not isinstance(x, dict)]
+        #     if invalid_calls:
+        #         message = RPC_ERRORS[self.INVALID_REQUEST]
+        #         result = generate_error_response(
+        #             rpc_id=None, code=self.INVALID_REQUEST, message=message
+        #         )
         return result, is_notification
 
     async def _base_receive_json(self, data: dict[str, Any]) -> None:
