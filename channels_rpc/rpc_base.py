@@ -21,6 +21,7 @@ from typing import Any
 from django.conf import settings
 from six import string_types
 
+from channels_rpc import logs
 from channels_rpc.exceptions import (
     GENERIC_APPLICATION_ERROR,
     INTERNAL_ERROR,
@@ -34,7 +35,7 @@ from channels_rpc.exceptions import (
 )
 from channels_rpc.utils import create_json_rpc_frame
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("channels-rpc.base")
 
 
 class RpcBase:
@@ -323,9 +324,11 @@ class RpcBase:
         tuple[Any, bool]
             Result of the remote procedure call and whether it is a notification.
         """
-        result = None
-        is_notification = None
+        result: Any = None
+        is_notification: bool = None
+        logger.debug(logs.CALL_INTERCEPTED, data)
         if data is None:
+            logger.warning(logs.EMPTY_CALL)
             message = RPC_ERRORS[self.INVALID_REQUEST]
             result = generate_error_response(
                 rpc_id=None, code=self.INVALID_REQUEST, message=message
@@ -334,6 +337,10 @@ class RpcBase:
             method_name = data.get("method")
             rpc_id = data.get("id")
             is_notification = method_name is not None and rpc_id is None
+            if rpc_id:
+                logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
+            else:
+                logger.info(logs.RPC_NOTIFICATION_START, method_name)
             try:
                 result = self.process_call(data, is_notification=is_notification)
             except JsonRpcError as e:
@@ -355,6 +362,10 @@ class RpcBase:
         #         result = generate_error_response(
         #             rpc_id=None, code=self.INVALID_REQUEST, message=message
         #         )
+        if rpc_id:
+            logger.info(logs.RPC_METHOD_CALL_END, rpc_id, method_name)
+        else:
+            logger.info(logs.RPC_NOTIFICATION_END, method_name)
         return result, is_notification
 
     def execute_called_method(self, method: Callable, params: list | dict) -> Any:
