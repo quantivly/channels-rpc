@@ -49,13 +49,6 @@ def generate_error_response(
     return create_json_rpc_frame(error=error, rpc_id=rpc_id)
 
 
-class MethodNotSupportedError(Exception):
-    """Raised when a method (i.e., a called procedure) is not supported by the
-    consumer."""
-
-    pass
-
-
 class JsonRpcError(Exception):
     """General JSON-RPC exception class."""
 

@@ -30,7 +30,6 @@ from channels_rpc.exceptions import (
     PARSE_ERROR,
     RPC_ERRORS,
     JsonRpcError,
-    MethodNotSupportedError,
     generate_error_response,
 )
 from channels_rpc.utils import create_json_rpc_frame
@@ -114,11 +113,11 @@ class RpcBase:
             Decorated function.
         """
 
-        def wrap(f: Callable) -> Callable:
-            name = method_name if method_name is not None else f.__name__
-            f.options = dict(websocket=websocket, http=http)
-            cls.rpc_methods[id(cls)][name] = f
-            return f
+        def wrap(method: Callable) -> Callable:
+            name = method_name or method.__name__
+            method.options = {"websocket": websocket, "http": http}
+            cls.rpc_methods[id(cls)][name] = method
+            return method
 
         return wrap
 
@@ -161,11 +160,11 @@ class RpcBase:
             Decorated function.
         """
 
-        def wrap(f):
-            name = notification_name if notification_name is not None else f.__name__
-            f.options = dict(websocket=websocket, http=http)
-            cls.rpc_notifications[id(cls)][name] = f
-            return f
+        def wrap(method: Callable) -> Callable:
+            name = notification_name or method.__name__
+            method.options = {"websocket": websocket, "http": http}
+            cls.rpc_notifications[id(cls)][name] = method
+            return method
 
         return wrap
 
@@ -196,6 +195,26 @@ class RpcBase:
         content = create_json_rpc_frame(method=method, params=params)
         self.send(self.encode_json(content))
 
+    def validate_call(self, data: dict[str, Any]) -> None:
+        """Validate RPC call data.
+
+        Parameters
+        ----------
+        data : dict[str, Any]
+            Remote procedure call data.
+
+        Raises
+        ------
+        JsonRpcError
+            Invalid call data.
+        """
+        rpc_id = data.get("id")
+        bad_json_rpc_version = data.get("jsonrpc") != "2.0"
+        no_method = "method" not in data
+        bad_method = not isinstance(data.get("method"), string_types)
+        if bad_json_rpc_version or no_method or bad_method:
+            raise JsonRpcError(rpc_id, self.INVALID_REQUEST)
+
     def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
         """Get the method to call.
 
@@ -218,33 +237,20 @@ class RpcBase:
         JsonRpcError
             RPC method not supported.
         """
-        rpc_id = data.get("id")
-        if data.get("jsonrpc") != "2.0":
-            raise JsonRpcError(rpc_id, self.INVALID_REQUEST)
-
-        try:
-            method_name = data["method"]
-        except KeyError as e:
-            raise JsonRpcError(rpc_id, self.INVALID_REQUEST) from e
-
-        if not isinstance(method_name, string_types):
-            raise JsonRpcError(rpc_id, self.INVALID_REQUEST)
-
+        self.validate_call(data)
+        rpc_id = data["id"]
+        method_name = data["method"]
         if method_name.startswith("_"):
             raise JsonRpcError(rpc_id, self.METHOD_NOT_FOUND)
-
+        class_id = id(self.__class__)
+        methods = self.rpc_notifications if is_notification else self.rpc_methods
         try:
-            class_id = id(self.__class__)
-            if is_notification:
-                method = self.__class__.rpc_notifications[class_id][method_name]
-            else:
-                method = self.__class__.rpc_methods[class_id][method_name]
-            proto = self.scope["type"]
-            if not method.options[proto]:
-                msg = f"Method not available through {proto}"
-                raise MethodNotSupportedError(msg)
-        except (KeyError, MethodNotSupportedError) as e:
+            method = methods[class_id][method_name]
+        except KeyError as e:
             raise JsonRpcError(rpc_id, self.METHOD_NOT_FOUND) from e
+        protocol = self.scope["type"]
+        if not method.options[protocol]:
+            raise JsonRpcError(rpc_id, self.METHOD_NOT_FOUND)
         return method
 
     def get_params(self, data: dict[str, Any]) -> dict | list:
@@ -317,30 +323,30 @@ class RpcBase:
         tuple[Any, bool]
             Result of the remote procedure call and whether it is a notification.
         """
+        result = None
+        is_notification = None
         if data is None:
             message = RPC_ERRORS[self.INVALID_REQUEST]
             result = generate_error_response(
                 rpc_id=None, code=self.INVALID_REQUEST, message=message
             )
-
-        # elif isinstance(data, dict):
-        method_name = data.get("method")
-        rpc_id = data.get("id")
-        is_notification = method_name is not None and rpc_id is None
-        result = None
-        try:
-            result = self.process_call(data, is_notification=is_notification)
-        except JsonRpcError as e:
-            result = e.as_dict()
-        except Exception as e:
-            logger.debug("Application error: %s", e)
-            exception_data = e.args[0] if len(e.args) == 1 else e.args
-            result = generate_error_response(
-                rpc_id=data.get("id"),
-                code=GENERIC_APPLICATION_ERROR,
-                message=str(e),
-                data=exception_data,
-            )
+        elif isinstance(data, dict):
+            method_name = data.get("method")
+            rpc_id = data.get("id")
+            is_notification = method_name is not None and rpc_id is None
+            try:
+                result = self.process_call(data, is_notification=is_notification)
+            except JsonRpcError as e:
+                result = e.as_dict()
+            except Exception as e:
+                logger.debug("Application error: %s", e)
+                exception_data = e.args[0] if len(e.args) == 1 else e.args
+                result = generate_error_response(
+                    rpc_id=data.get("id"),
+                    code=GENERIC_APPLICATION_ERROR,
+                    message=str(e),
+                    data=exception_data,
+                )
         # elif isinstance(data, list):
         #     # TODO: implement batch calls
         #     invalid_call_data = [x for x in data if not isinstance(x, dict)]

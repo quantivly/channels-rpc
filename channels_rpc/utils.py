@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+FRAME_BASE: dict[str, Any] = {"jsonrpc": "2.0"}
+
 
 def create_json_rpc_frame(
     rpc_id: int | None = None,
@@ -10,7 +12,7 @@ def create_json_rpc_frame(
     method: str | None = None,
     error: dict[str, int | str] | None = None,
 ) -> dict[str, Any]:
-    frame = {"jsonrpc": "2.0"}
+    frame = FRAME_BASE.copy()
     if rpc_id is not None:
         frame["id"] = rpc_id
     if method:
