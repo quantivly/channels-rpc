@@ -18,7 +18,7 @@ from channels_rpc.exceptions import (
 from channels_rpc.rpc_base import RpcBase
 from channels_rpc.utils import create_json_rpc_frame
 
-logger = logging.getLogger("channels-rpc.base")
+logger = logging.getLogger("django.channels.rpc")
 
 
 class AsyncRpcBase(RpcBase):
