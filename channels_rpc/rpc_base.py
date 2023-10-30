@@ -363,9 +363,9 @@ class RpcBase:
         #             rpc_id=None, code=INVALID_REQUEST, message=message
         #         )
         if rpc_id:
-            logger.info(logs.RPC_METHOD_CALL_END, rpc_id, method_name)
+            logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
         else:
-            logger.info(logs.RPC_NOTIFICATION_END, method_name)
+            logger.debug(logs.RPC_NOTIFICATION_END, method_name)
         return result, is_notification
 
     def execute_called_method(self, method: Callable, params: list | dict) -> Any:

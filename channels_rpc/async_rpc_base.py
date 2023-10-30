@@ -99,9 +99,9 @@ class AsyncRpcBase(RpcBase):
         #             rpc_id=None, code=INVALID_REQUEST, message=message
         #         )
         if rpc_id:
-            logger.info(logs.RPC_METHOD_CALL_END, rpc_id, method_name)
+            logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
         else:
-            logger.info(logs.RPC_NOTIFICATION_END, method_name)
+            logger.debug(logs.RPC_NOTIFICATION_END, method_name)
         return result, is_notification
 
     async def _base_receive_json(self, data: dict[str, Any]) -> None:
