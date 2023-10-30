@@ -296,12 +296,12 @@ class RpcBase:
         """
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
+        rpc_id = data.get("id") or data.get("call_id")
         logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
         result = self.execute_called_method(method, params)
-        # check and pack result
         if not is_notification:
             logger.debug("Execution result: %s", result)
-            result = create_json_rpc_frame(result=result, rpc_id=data.get("id"))
+            result = create_json_rpc_frame(result=result, rpc_id=rpc_id)
         elif result is not None:
             logger.warning("The notification method shouldn't return any result")
             logger.warning(f"method: {method.__qualname__}, params: {params}")
