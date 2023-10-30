@@ -410,7 +410,6 @@ class RpcBase:
             Received message data.
         """
         result, is_notification = self.intercept_call(data)
-
-        # Send response back only if it is a call, not notification
         if not is_notification:
+            logger.debug("Sending result: %s", result)
             self.send_json(result)

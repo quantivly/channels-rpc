@@ -110,4 +110,5 @@ class AsyncRpcBase(RpcBase):
     async def _base_receive_json(self, data: dict[str, Any]) -> None:
         result, is_notification = await self.intercept_call(data)
         if not is_notification:
+            logger.debug("Sending result: %s", result)
             await self.send_json(result)
