@@ -11,10 +11,11 @@ def create_json_rpc_frame(
     params: dict[str, Any] | None = None,
     method: str | None = None,
     error: dict[str, int | str] | None = None,
+    rpc_id_key: str = "id",
 ) -> dict[str, Any]:
     frame = FRAME_BASE.copy()
     if rpc_id is not None:
-        frame["id"] = rpc_id
+        frame[rpc_id_key] = rpc_id
     if method:
         frame["method"] = method
         frame["params"] = params
