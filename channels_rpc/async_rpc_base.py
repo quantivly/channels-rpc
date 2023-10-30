@@ -11,6 +11,7 @@ from django.conf import settings
 from channels_rpc import logs
 from channels_rpc.exceptions import (
     GENERIC_APPLICATION_ERROR,
+    INVALID_REQUEST,
     RPC_ERRORS,
     JsonRpcError,
     generate_error_response,
@@ -62,9 +63,9 @@ class AsyncRpcBase(RpcBase):
         logger.debug(logs.CALL_INTERCEPTED, data)
         if data is None:
             logger.warning(logs.EMPTY_CALL)
-            message = RPC_ERRORS[self.INVALID_REQUEST]
+            message = RPC_ERRORS[INVALID_REQUEST]
             result = generate_error_response(
-                rpc_id=None, code=self.INVALID_REQUEST, message=message
+                rpc_id=None, code=INVALID_REQUEST, message=message
             )
         elif isinstance(data, dict):
             method_name = data.get("method")
@@ -91,9 +92,9 @@ class AsyncRpcBase(RpcBase):
         #     # TODO: implement batch calls
         #     invalid_calls = [x for x in data if not isinstance(x, dict)]
         #     if invalid_calls:
-        #         message = RPC_ERRORS[self.INVALID_REQUEST]
+        #         message = RPC_ERRORS[INVALID_REQUEST]
         #         result = generate_error_response(
-        #             rpc_id=None, code=self.INVALID_REQUEST, message=message
+        #             rpc_id=None, code=INVALID_REQUEST, message=message
         #         )
         if rpc_id:
             logger.info(logs.RPC_METHOD_CALL_END, rpc_id, method_name)

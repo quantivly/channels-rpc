@@ -214,7 +214,7 @@ class RpcBase:
         no_method = "method" not in data
         bad_method = not isinstance(data.get("method"), string_types)
         if bad_json_rpc_version or no_method or bad_method:
-            raise JsonRpcError(rpc_id, self.INVALID_REQUEST)
+            raise JsonRpcError(rpc_id, INVALID_REQUEST)
 
     def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
         """Get the method to call.
@@ -275,7 +275,7 @@ class RpcBase:
         params = data.get("params", [])
         if not isinstance(params, (list, dict)):
             rpc_id = data.get("id")
-            raise JsonRpcError(rpc_id, self.INVALID_PARAMS)
+            raise JsonRpcError(rpc_id, INVALID_PARAMS)
         return params
 
     def process_call(
@@ -329,9 +329,9 @@ class RpcBase:
         logger.debug(logs.CALL_INTERCEPTED, data)
         if data is None:
             logger.warning(logs.EMPTY_CALL)
-            message = RPC_ERRORS[self.INVALID_REQUEST]
+            message = RPC_ERRORS[INVALID_REQUEST]
             result = generate_error_response(
-                rpc_id=None, code=self.INVALID_REQUEST, message=message
+                rpc_id=None, code=INVALID_REQUEST, message=message
             )
         elif isinstance(data, dict):
             method_name = data.get("method")
@@ -358,9 +358,9 @@ class RpcBase:
         #     # TODO: implement batch calls
         #     invalid_call_data = [x for x in data if not isinstance(x, dict)]
         #     if invalid_call_data:
-        #         message = RPC_ERRORS[self.INVALID_REQUEST]
+        #         message = RPC_ERRORS[INVALID_REQUEST]
         #         result = generate_error_response(
-        #             rpc_id=None, code=self.INVALID_REQUEST, message=message
+        #             rpc_id=None, code=INVALID_REQUEST, message=message
         #         )
         if rpc_id:
             logger.info(logs.RPC_METHOD_CALL_END, rpc_id, method_name)

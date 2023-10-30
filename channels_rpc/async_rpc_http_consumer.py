@@ -2,7 +2,12 @@ import json
 
 from channels.generic.http import AsyncHttpConsumer
 
-from channels_rpc.exceptions import RPC_ERRORS, generate_error_response
+from channels_rpc.exceptions import (
+    INVALID_REQUEST,
+    PARSE_ERROR,
+    RPC_ERRORS,
+    generate_error_response,
+)
 from channels_rpc.rpc_base import RpcBase
 
 
@@ -19,7 +24,7 @@ class AsyncRpcHttpConsumer(AsyncHttpConsumer, RpcBase):
             except ValueError:
                 # json could not decoded
                 result = generate_error_response(
-                    None, self.PARSE_ERROR, RPC_ERRORS[self.PARSE_ERROR]
+                    None, PARSE_ERROR, RPC_ERRORS[PARSE_ERROR]
                 )
             else:
                 result, is_notification = self.intercept_call(data)
@@ -38,7 +43,7 @@ class AsyncRpcHttpConsumer(AsyncHttpConsumer, RpcBase):
                 status_code = 200
         else:
             result = generate_error_response(
-                None, self.INVALID_REQUEST, RPC_ERRORS[self.INVALID_REQUEST]
+                None, INVALID_REQUEST, RPC_ERRORS[INVALID_REQUEST]
             )
 
         self.send_response(
