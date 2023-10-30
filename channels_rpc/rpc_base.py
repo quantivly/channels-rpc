@@ -18,7 +18,6 @@ from collections.abc import Callable
 from inspect import getfullargspec
 from typing import Any
 
-from django.conf import settings
 from six import string_types
 
 from channels_rpc import logs
@@ -213,7 +212,9 @@ class RpcBase:
         bad_json_rpc_version = data.get("jsonrpc") != "2.0"
         no_method = "method" not in data
         bad_method = not isinstance(data.get("method"), string_types)
-        if bad_json_rpc_version or no_method or bad_method:
+        if bad_json_rpc_version:
+            logger.warning(logs.INVALID_JSON_RPC_VERSION, data.get("jsonrpc"))
+        if no_method or bad_method:
             raise JsonRpcError(rpc_id, INVALID_REQUEST)
 
     def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
@@ -295,13 +296,11 @@ class RpcBase:
         """
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
-        if settings.DEBUG:
-            logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
+        logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
         result = self.execute_called_method(method, params)
         # check and pack result
         if not is_notification:
-            if settings.DEBUG:
-                logger.debug("Execution result: %s", result)
+            logger.debug("Execution result: %s", result)
             result = create_json_rpc_frame(result=result, rpc_id=data.get("id"))
         elif result is not None:
             logger.warning("The notification method shouldn't return any result")

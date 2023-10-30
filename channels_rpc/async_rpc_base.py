@@ -6,8 +6,6 @@ from collections.abc import Callable
 from inspect import getfullargspec
 from typing import Any
 
-from django.conf import settings
-
 from channels_rpc import logs
 from channels_rpc.exceptions import (
     GENERIC_APPLICATION_ERROR,
@@ -41,13 +39,11 @@ class AsyncRpcBase(RpcBase):
     ):
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
-        if settings.DEBUG:
-            logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
+        logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
         result = await self.execute_called_method(method, params)
         # check and pack result
         if not is_notification:
-            if settings.DEBUG:
-                logger.debug("Execution result: %s", result)
+            logger.debug("Execution result: %s", result)
             result = create_json_rpc_frame(result=result, rpc_id=data.get("id"))
         elif result is not None:
             logger.warning("The notification method shouldn't return any result")
