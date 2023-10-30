@@ -60,6 +60,8 @@ class AsyncRpcBase(RpcBase):
     ) -> tuple[Any, bool]:
         result: Any = None
         is_notification: bool = False
+        if isinstance(data, dict) and "request" in data:
+            data = data["request"]
         logger.debug(logs.CALL_INTERCEPTED, data)
         if data is None:
             logger.warning(logs.EMPTY_CALL)
