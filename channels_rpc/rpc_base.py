@@ -335,7 +335,7 @@ class RpcBase:
             )
         elif isinstance(data, dict):
             method_name = data.get("method")
-            rpc_id = data.get("id")
+            rpc_id = data.get("id") or data.get("call_id")
             is_notification = method_name is not None and rpc_id is None
             if rpc_id:
                 logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
