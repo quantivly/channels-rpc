@@ -239,10 +239,8 @@ class RpcBase:
             RPC method not supported.
         """
         self.validate_call(data)
-        rpc_id = data["id"]
+        rpc_id = data.get("id") or data.get("call_id")
         method_name = data["method"]
-        if method_name.startswith("_"):
-            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
         class_id = id(self.__class__)
         methods = self.rpc_notifications if is_notification else self.rpc_methods
         try:
