@@ -50,7 +50,11 @@ class AsyncRpcBase(RpcBase):
         if not is_notification:
             logger.debug("Execution result: %s", result)
             result = create_json_rpc_frame(
-                result=result, rpc_id=rpc_id, rpc_id_key=rpc_id_key
+                result=result,
+                rpc_id=rpc_id,
+                rpc_id_key=rpc_id_key,
+                method=method,
+                params=params,
             )
         elif result is not None:
             logger.warning("The notification method shouldn't return any result")
