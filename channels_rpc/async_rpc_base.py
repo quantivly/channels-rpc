@@ -53,7 +53,7 @@ class AsyncRpcBase(RpcBase):
                 result=result,
                 rpc_id=rpc_id,
                 rpc_id_key=rpc_id_key,
-                method=method,
+                method=data["method"],
                 params=params,
             )
         elif result is not None:
