@@ -65,20 +65,21 @@ class AsyncRpcBase(RpcBase):
     async def intercept_call(
         self, data: dict[str, Any] | list[str, Any] | None
     ) -> tuple[Any, bool]:
-        result: Any = None
-        is_notification: bool = False
-        rpc_id = data.get("id") or data.get("call_id")
-        method_name = data.get("method")
         if isinstance(data, dict) and "request" in data:
             data = data["request"]
-        logger.debug(logs.CALL_INTERCEPTED, data)
         if data is None:
             logger.warning(logs.EMPTY_CALL)
             message = RPC_ERRORS[INVALID_REQUEST]
             result = generate_error_response(
                 rpc_id=None, code=INVALID_REQUEST, message=message
             )
-        elif isinstance(data, dict):
+            return result, False
+        result = None
+        is_notification: bool = False
+        rpc_id = data.get("id") or data.get("call_id")
+        method_name = data.get("method")
+        logger.debug(logs.CALL_INTERCEPTED, data)
+        if isinstance(data, dict):
             is_notification = method_name is not None and rpc_id is None
             if rpc_id:
                 logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
@@ -112,6 +113,7 @@ class AsyncRpcBase(RpcBase):
         return result, is_notification
 
     async def _base_receive_json(self, data: dict[str, Any]) -> None:
+        logger.debug("Received JSON: %s", data)
         result, is_notification = await self.intercept_call(data)
         if not is_notification:
             logger.debug("Sending result: %s", result)

@@ -13,6 +13,7 @@ def create_json_rpc_frame(
     error: dict[str, int | str] | None = None,
     rpc_id_key: str = "id",
 ) -> dict[str, Any]:
+    frame = FRAME_BASE.copy()
     if result is not None:
         return {
             "request": {
@@ -25,8 +26,8 @@ def create_json_rpc_frame(
                 "result_type": "success",
                 "call_id": rpc_id,
             },
+            **frame,
         }
-    frame = FRAME_BASE.copy()
     if rpc_id is not None:
         frame[rpc_id_key] = rpc_id
     if method:
