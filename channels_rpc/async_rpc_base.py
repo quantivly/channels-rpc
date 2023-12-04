@@ -66,20 +66,23 @@ class AsyncRpcBase(RpcBase):
         self, data: dict[str, Any] | list[str, Any] | None
     ) -> tuple[Any, bool]:
         logger.debug("Intercepting call: %s", data)
-        if isinstance(data, dict) and "request" in data:
-            data = data["request"]
-        if data is None:
+        if data:
             logger.warning(logs.EMPTY_CALL)
             message = RPC_ERRORS[INVALID_REQUEST]
             result = generate_error_response(
                 rpc_id=None, code=INVALID_REQUEST, message=message
             )
             return result, False
+        if isinstance(data, dict) and "request" in data:
+            request = data["request"]
+        if isinstance(data, dict) and "response" in data:
+            response = data["response"]
+            logger.debug(f"Received RPC response: {response}")
         result = None
         is_notification: bool = False
-        rpc_id = data.get("id") or data.get("call_id")
-        method_name = data.get("method")
-        logger.debug(logs.CALL_INTERCEPTED, data)
+        rpc_id = request.get("id") or data.get("call_id")
+        method_name = request.get("method")
+        logger.debug(logs.CALL_INTERCEPTED, request)
         if isinstance(data, dict):
             is_notification = method_name is not None and rpc_id is None
             if rpc_id:
@@ -87,7 +90,9 @@ class AsyncRpcBase(RpcBase):
             else:
                 logger.info(logs.RPC_NOTIFICATION_START, method_name)
             try:
-                result = await self.process_call(data, is_notification=is_notification)
+                result = await self.process_call(
+                    request, is_notification=is_notification
+                )
             except JsonRpcError as e:
                 result = e.as_dict()
             except Exception as e:
