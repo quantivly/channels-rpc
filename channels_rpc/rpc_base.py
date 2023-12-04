@@ -332,6 +332,7 @@ class RpcBase:
         tuple[Any, bool]
             Result of the remote procedure call and whether it is a notification.
         """
+        logger.debug("Intercepting call: %s", data)
         if isinstance(data, dict) and "request" in data:
             data = data["request"]
         if data is None:

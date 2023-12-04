@@ -65,6 +65,7 @@ class AsyncRpcBase(RpcBase):
     async def intercept_call(
         self, data: dict[str, Any] | list[str, Any] | None
     ) -> tuple[Any, bool]:
+        logger.debug("Intercepting call: %s", data)
         if isinstance(data, dict) and "request" in data:
             data = data["request"]
         if data is None:
