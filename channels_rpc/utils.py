@@ -13,14 +13,25 @@ def create_json_rpc_frame(
     error: dict[str, int | str] | None = None,
     rpc_id_key: str = "id",
 ) -> dict[str, Any]:
+    if result is not None:
+        return {
+            "request": {
+                "call_id": rpc_id,
+                "method": method,
+                "arguments": params,
+            },
+            "response": {
+                "result": result,
+                "result_type": "success",
+                "call_id": rpc_id,
+            },
+        }
     frame = FRAME_BASE.copy()
     if rpc_id is not None:
         frame[rpc_id_key] = rpc_id
     if method:
         frame["method"] = method
         frame["params"] = params
-    elif result is not None:
-        frame["result"] = result
     elif error is not None:
         frame["error"] = error
     return frame
