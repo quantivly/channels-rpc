@@ -335,6 +335,7 @@ class RpcBase:
         result: Any = None
         is_notification: bool = None
         rpc_id = data.get("id") or data.get("call_id")
+        method_name = data.get("method")
         if isinstance(data, dict) and "request" in data:
             data = data["request"]
         logger.debug(logs.CALL_INTERCEPTED, data)
@@ -345,7 +346,6 @@ class RpcBase:
                 rpc_id=None, code=INVALID_REQUEST, message=message
             )
         elif isinstance(data, dict):
-            method_name = data.get("method")
             is_notification = method_name is not None and rpc_id is None
             if rpc_id:
                 logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
