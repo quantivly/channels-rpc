@@ -271,7 +271,7 @@ class RpcBase:
         JsonRpcError
             Invalid call data provided.
         """
-        params = data.get("params") or data.get("arguments") or []
+        params = data.get("params") or data.get("arguments") or {}
         if not isinstance(params, (list, dict)):
             rpc_id = data.get("id")
             raise JsonRpcError(rpc_id, INVALID_PARAMS)
