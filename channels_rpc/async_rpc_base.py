@@ -79,7 +79,7 @@ class AsyncRpcBase(RpcBase):
                 return None, True
         result = None
         is_notification: bool = False
-        rpc_id = request.get("id") or data.get("call_id")
+        rpc_id = request.get("id") or request.get("call_id")
         method_name = request.get("method")
         logger.debug(logs.CALL_INTERCEPTED, request)
         if isinstance(data, dict):
