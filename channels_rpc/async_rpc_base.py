@@ -39,12 +39,7 @@ class AsyncRpcBase(RpcBase):
     ):
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
-        rpc_id_key = "id"
-        if rpc_id_key in data:
-            rpc_id = data[rpc_id_key]
-        elif "call_id" in data:
-            rpc_id = data["call_id"]
-            rpc_id_key = "call_id"
+        rpc_id, rpc_id_key = self.get_rpc_id(data)
         logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
         result = await self.execute_called_method(method, params)
         if not is_notification:

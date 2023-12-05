@@ -84,6 +84,7 @@ class RpcBase:
         INTERNAL_ERROR: 500,
         GENERIC_APPLICATION_ERROR: 500,
     }
+    RPC_ID_KEYS: list[str] = ["id", "call_id"]
 
     rpc_methods: defaultdict = defaultdict(dict)
     rpc_notifications: defaultdict = defaultdict(dict)
@@ -208,6 +209,7 @@ class RpcBase:
         JsonRpcError
             Invalid call data.
         """
+        logger.debug("Validating call data: %s", data)
         rpc_id = data.get("id")
         bad_json_rpc_version = data.get("jsonrpc") != "2.0"
         no_method = "method" not in data
@@ -216,6 +218,7 @@ class RpcBase:
             logger.warning(logs.INVALID_JSON_RPC_VERSION, data.get("jsonrpc"))
         if no_method or bad_method:
             raise JsonRpcError(rpc_id, INVALID_REQUEST)
+        logger.debug("Call data is valid")
 
     def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
         """Get the method to call.
@@ -242,6 +245,7 @@ class RpcBase:
         self.validate_call(data)
         rpc_id = data.get("id") or data.get("call_id")
         method_name = data["method"]
+        logger.debug("Getting method: %s", method_name)
         class_id = id(self.__class__)
         methods = self.rpc_notifications if is_notification else self.rpc_methods
         try:
@@ -251,6 +255,7 @@ class RpcBase:
         protocol = self.scope["type"]
         if not method.options[protocol]:
             raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
+        logger.debug("Method found: %s", method)
         return method
 
     def get_params(self, data: dict[str, Any]) -> dict | list:
@@ -271,11 +276,34 @@ class RpcBase:
         JsonRpcError
             Invalid call data provided.
         """
+        logger.debug("Getting call parameters: %s", data)
         params = data.get("params") or data.get("arguments") or {}
         if not isinstance(params, (list, dict)):
             rpc_id = data.get("id")
             raise JsonRpcError(rpc_id, INVALID_PARAMS)
+        logger.debug("Call parameters found: %s", params)
         return params
+
+    def get_rpc_id(self, data: dict[str, Any]) -> tuple[str | None, str | None]:
+        """Get the RPC ID.
+
+        Parameters
+        ----------
+        data : dict[str, Any]
+            Remote procedure call data.
+
+        Returns
+        -------
+        tuple[str | None, str | None]
+            RPC ID and RPC ID key.
+        """
+        logger.debug("Extracting RPC ID: %s", data)
+        for rpc_id_key in self.RPC_ID_KEYS:
+            if rpc_id_key in data:
+                logger.debug(
+                    "RPC ID with key '%s' found: %s", rpc_id_key, data[rpc_id_key]
+                )
+                return data[rpc_id_key], rpc_id_key
 
     def process_call(
         self, data: dict[str, Any], *, is_notification: bool = False
@@ -296,12 +324,7 @@ class RpcBase:
         """
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
-        rpc_id_key = "id"
-        if rpc_id_key in data:
-            rpc_id = data[rpc_id_key]
-        elif "call_id" in data:
-            rpc_id = data["call_id"]
-            rpc_id_key = "call_id"
+        rpc_id, rpc_id_key = self.get_rpc_id(data)
         logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
         result = self.execute_called_method(method, params)
         if not is_notification:
