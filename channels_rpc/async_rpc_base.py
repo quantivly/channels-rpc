@@ -61,7 +61,7 @@ class AsyncRpcBase(RpcBase):
         self, data: dict[str, Any] | list[str, Any] | None
     ) -> tuple[Any, bool]:
         logger.debug("Intercepting call: %s", data)
-        if data:
+        if not data:
             logger.warning(logs.EMPTY_CALL)
             message = RPC_ERRORS[INVALID_REQUEST]
             result = generate_error_response(

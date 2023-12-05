@@ -356,7 +356,7 @@ class RpcBase:
             Result of the remote procedure call and whether it is a notification.
         """
         logger.debug("Intercepting call: %s", data)
-        if data:
+        if not data:
             logger.warning(logs.EMPTY_CALL)
             message = RPC_ERRORS[INVALID_REQUEST]
             result = generate_error_response(
