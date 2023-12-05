@@ -365,9 +365,13 @@ class RpcBase:
             return result, False
         if isinstance(data, dict) and "request" in data:
             request = data["request"]
+            if request is not None:
+                logger.debug(f"Received RPC request: {request}")
         if isinstance(data, dict) and "response" in data:
             response = data["response"]
-            logger.debug(f"Received RPC response: {response}")
+            if response is not None:
+                logger.debug(f"Received RPC response: {response}")
+                return None, True
         result = None
         is_notification: bool = None
         rpc_id = request.get("id") or request.get("call_id")
