@@ -255,7 +255,7 @@ class RpcBase:
         protocol = self.scope["type"]
         if not method.options[protocol]:
             raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
-        logger.debug("Method found: %s", method)
+        logger.debug("Method found: %s", method.__name__)
         return method
 
     def get_params(self, data: dict[str, Any]) -> dict | list:
@@ -363,15 +363,16 @@ class RpcBase:
                 rpc_id=None, code=INVALID_REQUEST, message=message
             )
             return result, False
-        if isinstance(data, dict) and "request" in data:
-            request = data["request"]
-            if request is not None:
-                logger.debug(f"Received RPC request: {request}")
+        response = None
         if isinstance(data, dict) and "response" in data:
             response = data["response"]
             if response is not None:
                 logger.debug(f"Received RPC response: {response}")
-                return None, True
+                return response, True
+        if isinstance(data, dict) and "request" in data and response is None:
+            request = data["request"]
+            if request is not None:
+                logger.debug(f"Received RPC request: {request}")
         result = None
         is_notification: bool = None
         rpc_id = request.get("id") or request.get("call_id")
