@@ -70,6 +70,7 @@ class AsyncRpcBase(RpcBase):
             return result, False
         if isinstance(data, dict) and "request" in data:
             request = data["request"]
+            logger.debug(f"Received RPC request: {request}")
         if isinstance(data, dict) and "response" in data:
             response = data["response"]
             logger.debug(f"Received RPC response: {response}")

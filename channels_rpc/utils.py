@@ -25,11 +25,6 @@ def create_json_rpc_frame(
         }
     else:
         return {
-            "request": {
-                rpc_id_key: rpc_id,
-                "method": method,
-                "arguments": params,
-            },
             "response": {
                 "result": result or error,
                 "result_type": "success",
