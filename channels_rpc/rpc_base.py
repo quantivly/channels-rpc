@@ -369,7 +369,7 @@ class RpcBase:
             if response is not None:
                 logger.debug(f"Received RPC response: {response}")
                 return response, True
-        if isinstance(data, dict) and "request" in data and response is None:
+        if isinstance(data, dict) and "request" in data:
             request = data["request"]
             if request is not None:
                 logger.debug(f"Received RPC request: {request}")
