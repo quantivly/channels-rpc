@@ -27,7 +27,7 @@ def create_json_rpc_frame(
         return {
             "response": {
                 "result": result or error,
-                "result_type": "success",
+                "result_type": type(result).__name__ if result else None,
                 rpc_id_key: rpc_id,
             },
             **frame,
