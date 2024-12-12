@@ -20,7 +20,7 @@ ruff = "^0.1.1"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core"]
+requires = ["poetry-core", "setuptools>=42", "wheel"]
 
 # ==== pytest ====
 [tool.pytest.ini_options]
@@ -105,3 +105,27 @@ python_version = "3.9"
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
+
+# ==== build metadata =====
+[project]
+name = "channels_rpc"
+version = "0.1.0"
+description = "A JSON RPC functionality over Djano channels."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Or Weis", email = "or@permit.io" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Internet :: WWW/HTTP :: WSGI"
+]
+dependencies = [
+  "channels==4.2.0",
+  "six==1.17.0",
+]
+requires-python = ">=3.7"
+urls = { "Homepage" = "https://github.com/permitio/channels_rpc" }
