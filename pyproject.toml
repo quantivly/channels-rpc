@@ -20,7 +20,7 @@ ruff = "^0.1.1"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core", "setuptools>=42", "wheel"]
+requires = ["poetry-core"]
 
 # ==== pytest ====
 [tool.pytest.ini_options]
@@ -41,7 +41,6 @@ target-version = ["py39"]
 
 [tool.ruff]
 ignore = [
-  # Allow non-abstract empty methods in abstract base classes
   "B027", # Allow boolean positional values in function calls, like `dict.get(... True)`
   "FBT003", # Ignore checks for possible passwords
   "S101",
@@ -83,7 +82,6 @@ select = [
 ]
 target-version = "py39"
 unfixable = [
-  # Don't touch unused imports
   "F401",
 ]
 
@@ -94,7 +92,6 @@ known-first-party = ["channels_rpc"]
 ban-relative-imports = "all"
 
 [tool.ruff.per-file-ignores]
-# Tests can use magic values, assertions, and relative imports
 "tests/**/*" = ["PLR2004", "S101", "TID252"]
 
 # ==== mypy ====
@@ -105,27 +102,3 @@ python_version = "3.9"
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
-
-# ==== build metadata =====
-[project]
-name = "channels_rpc"
-version = "0.1.0"
-description = "A JSON RPC functionality over Djano channels."
-readme = "README.md"
-license = { text = "MIT" }
-authors = [
-    { name = "Or Weis", email = "or@permit.io" }
-]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
-    "Topic :: Internet :: WWW/HTTP :: WSGI"
-]
-dependencies = [
-  "channels==4.2.0",
-  "six==1.17.0",
-]
-requires-python = ">=3.7"
-urls = { "Homepage" = "https://github.com/permitio/channels_rpc" }
