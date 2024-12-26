@@ -25,17 +25,13 @@ from channels_rpc import JsonRpcWebsocketConsumer
 class MyJsonRpcConsumer(JsonRpcConsumer):
 
     def connect(self, message, **kwargs):
-        """
-		Perform things on WebSocket connection start
-		"""
-		self.accept()
+        """Perform things on WebSocket connection start"""
+        self.accept()
         print("connect")
         # Do stuff if needed
 
-  def disconnect(self, message, **kwargs):
-        """
-		 Perform things on WebSocket connection close
-		"""
+    def disconnect(self, message, **kwargs):
+        """Perform things on WebSocket connection close"""
         print("disconnect")
         # Do stuff if needed
 
@@ -78,10 +74,10 @@ RPC methods can obviously accept parameters. They also return "results" or "erro
 def ping(fake_an_error):
     if fake_an_error:
         # Will return an error to the client
- #  --> {"id":1, "jsonrpc":"2.0","method":"mymodule.rpc.ping","params":{}} #  <-- {"id": 1, "jsonrpc": "2.0", "error": {"message": "fake_error", "code": -32000, "data": ["fake_error"]}}  raise Exception("fake_error")
+        #  --> {"id":1, "jsonrpc":"2.0","method":"mymodule.rpc.ping","params":{}} #  <-- {"id": 1, "jsonrpc": "2.0", "error": {"message": "fake_error", "code": -32000, "data": ["fake_error"]}}  raise Exception("fake_error")
     else:
         # Will return a result to the client
- #  --> {"id":1, "jsonrpc":"2.0","method":"mymodule.rpc.ping","params":{}} #  <-- {"id": 1, "jsonrpc": "2.0", "result": "pong"}  return "pong"
+        #  --> {"id":1, "jsonrpc":"2.0","method":"mymodule.rpc.ping","params":{}} #  <-- {"id": 1, "jsonrpc": "2.0", "result": "pong"}  return "pong"
 ```
 
 ## Async Use
@@ -97,7 +93,7 @@ class MyAsyncJsonRpcConsumer(AsyncJsonRpcWebsocketConsumer):
 
 @MyAsyncJsonRpcConsumer.rpc_method("mymodule.rpc.ping")
 async def ping(fake_an_error):
-	return "ping"
+    return "ping"
 ```
 
 ## [Sessions and other parameters from Consumer object](#consumer)
@@ -119,15 +115,15 @@ Example:
 ```python
 class MyJsonRpcConsumerTest(JsonRpcConsumer):
     # Set to True to automatically port users from HTTP cookies
- # (you don't need channel_session_user, this implies it) # https://channels.readthedocs.io/en/stable/generics.html#websockets  http_user = True
+    # (you don't need channel_session_user, this implies it) # https://channels.readthedocs.io/en/stable/generics.html#websockets  http_user = True
 
 ....
 
 @MyJsonRpcConsumerTest.rpc_method()
-    def ping(**kwargs):
-        consumer = kwargs["consumer"]
-        consumer.scope["session"]["test"] = True
-  return "pong"
+def ping(**kwargs):
+    consumer = kwargs["consumer"]
+    consumer.scope["session"]["test"] = True
+    return "pong"
 
 ```
 
