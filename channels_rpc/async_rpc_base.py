@@ -126,51 +126,6 @@ class AsyncRpcBase(RpcBase):
 
                 return result, is_notification
 
-            # Backward compatibility: handle old nested format
-            if "request" in data:
-                request = data["request"]
-                if request is not None:
-                    logger.debug(f"Received legacy RPC request: {request}")
-                    rpc_id = request.get("id") or request.get("call_id")
-                    method_name = request.get("method")
-                    is_notification = method_name is not None and rpc_id is None
-
-                    if rpc_id:
-                        logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
-                    else:
-                        logger.info(logs.RPC_NOTIFICATION_START, method_name)
-
-                    try:
-                        result = await self.process_call(
-                            request, is_notification=is_notification
-                        )
-                    except JsonRpcError as e:
-                        result = e.as_dict()
-                    except Exception as e:
-                        logger.debug("Application error: %s", e)
-                        exception_data = e.args[0] if len(e.args) == 1 else e.args
-                        result = generate_error_response(
-                            rpc_id=rpc_id,
-                            code=GENERIC_APPLICATION_ERROR,
-                            message=str(e),
-                            data=exception_data,
-                        )
-
-                    if rpc_id:
-                        logger.debug(
-                            logs.RPC_METHOD_CALL_END, rpc_id, method_name, result
-                        )
-                    else:
-                        logger.debug(logs.RPC_NOTIFICATION_END, method_name)
-
-                    return result, is_notification
-
-            if "response" in data:
-                response = data["response"]
-                if response is not None:
-                    logger.debug(f"Received legacy RPC response: {response}")
-                    return response, True
-
         # Invalid request format
         message = RPC_ERRORS[INVALID_REQUEST]
         result = generate_error_response(
