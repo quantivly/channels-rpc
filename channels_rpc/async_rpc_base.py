@@ -50,6 +50,7 @@ class AsyncRpcBase(RpcBase):
                 rpc_id_key=rpc_id_key,
                 method=data["method"],
                 params=params,
+                compressed=False,
             )
         elif result is not None:
             logger.warning("The notification method shouldn't return any result")

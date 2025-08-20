@@ -12,6 +12,8 @@ def create_json_rpc_frame(
     method: str | None = None,
     error: dict[str, int | str] | None = None,
     rpc_id_key: str = "call_id",
+    *,
+    compressed: bool = False,
 ) -> dict[str, Any]:
     frame = FRAME_BASE.copy()
     if result is None:
@@ -33,6 +35,7 @@ def create_json_rpc_frame(
             "response": {
                 "result": result or error,
                 "result_type": type(result).__name__ if result else None,
+                "compressed": compressed,
                 rpc_id_key: rpc_id,
             },
             **frame,
