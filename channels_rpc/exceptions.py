@@ -2,7 +2,7 @@
 import json
 from typing import Any
 
-from channels_rpc.utils import create_json_rpc_frame
+# Removed unused import
 
 PARSE_ERROR: int = -32700
 INVALID_REQUEST: int = -32600
@@ -23,14 +23,14 @@ RPC_ERRORS: dict[int, str] = {
 
 
 def generate_error_response(
-    rpc_id: int, code: int, message: str, data=None
+    rpc_id: int | str | None, code: int, message: str, data=None
 ) -> dict[str, Any]:
     """Generate a JSON-RPC error response.
 
     Parameters
     ----------
-    rpc_id : int
-        Call ID.
+    rpc_id : int | str | None
+        Request ID this error responds to.
     code : int
         RPC error code.
     message : str
@@ -43,10 +43,11 @@ def generate_error_response(
     dict[str, Any]
         Error response.
     """
-    error = {"code": code, "message": message}
-    if data is not None:
-        error["data"] = data
-    return create_json_rpc_frame(error=error, rpc_id=rpc_id)
+    from channels_rpc.utils import create_json_rpc_error_response
+
+    return create_json_rpc_error_response(
+        rpc_id=rpc_id, code=code, message=message, data=data
+    )
 
 
 class JsonRpcError(Exception):
