@@ -72,15 +72,49 @@ class AsyncRpcBase(RpcBase):
             )
             return result, False
 
-        # Handle JSON-RPC 2.0 format
+        # Handle JSON-RPC 2.0 and mixed format
         if isinstance(data, dict):
-            # Check if this is a response
-            if "result" in data or "error" in data:
+            # Check for mixed format (both "request" and "response" fields)
+            if "request" in data and "response" in data:
+                logger.debug(f"Received mixed format message: {data}")
+                # If both are present, check if this is a response to our request
+                if "result" in data.get("response", {}) or "error" in data.get(
+                    "response", {}
+                ):
+                    # This is a response - extract the JSON-RPC 2.0 response part
+                    response_data = data["response"]
+                    # Convert legacy response to JSON-RPC 2.0 format
+                    rpc_response = {
+                        "jsonrpc": "2.0",
+                        "id": response_data.get("call_id"),
+                        "result": response_data.get("result"),
+                    }
+                    logger.debug(f"Extracted RPC response: {rpc_response}")
+                    return rpc_response, True
+                else:
+                    # This is a request - extract the request part
+                    request_data = data["request"]
+                    logger.debug(f"Extracted RPC request: {request_data}")
+                    rpc_id = request_data.get("call_id") or request_data.get("id")
+                    method_name = request_data.get("method")
+                    params = request_data.get("arguments", {})
+
+                    # Build request object for backward compatibility
+                    request = {
+                        "method": method_name,
+                        "arguments": params
+                        if isinstance(params, dict)
+                        else {"params": params},
+                        "id": rpc_id,
+                    }
+
+            # Check if this is a pure JSON-RPC 2.0 response
+            elif "result" in data or "error" in data:
                 logger.debug(f"Received RPC response: {data}")
                 return data, True
 
-            # Check if this is a request
-            if "method" in data:
+            # Check if this is a pure JSON-RPC 2.0 request
+            elif "method" in data:
                 logger.debug(f"Received RPC request: {data}")
                 rpc_id = data.get("id")
                 method_name = data.get("method")
@@ -94,37 +128,46 @@ class AsyncRpcBase(RpcBase):
                     else {"params": params},
                     "id": rpc_id,
                 }
+            else:
+                # Not a recognized format
+                logger.warning(f"Unrecognized message format: {data}")
+                message = RPC_ERRORS[INVALID_REQUEST]
+                result = generate_error_response(
+                    rpc_id=None, code=INVALID_REQUEST, message=message
+                )
+                return result, False
 
-                is_notification = rpc_id is None
-                logger.debug(logs.CALL_INTERCEPTED, request)
+            # Continue processing the request
+            is_notification = rpc_id is None
+            logger.debug(logs.CALL_INTERCEPTED, request)
 
-                if rpc_id:
-                    logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
-                else:
-                    logger.info(logs.RPC_NOTIFICATION_START, method_name)
+            if rpc_id:
+                logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
+            else:
+                logger.info(logs.RPC_NOTIFICATION_START, method_name)
 
-                try:
-                    result = await self.process_call(
-                        request, is_notification=is_notification
-                    )
-                except JsonRpcError as e:
-                    result = e.as_dict()
-                except Exception as e:
-                    logger.debug("Application error: %s", e)
-                    exception_data = e.args[0] if len(e.args) == 1 else e.args
-                    result = generate_error_response(
-                        rpc_id=rpc_id,
-                        code=GENERIC_APPLICATION_ERROR,
-                        message=str(e),
-                        data=exception_data,
-                    )
+            try:
+                result = await self.process_call(
+                    request, is_notification=is_notification
+                )
+            except JsonRpcError as e:
+                result = e.as_dict()
+            except Exception as e:
+                logger.debug("Application error: %s", e)
+                exception_data = e.args[0] if len(e.args) == 1 else e.args
+                result = generate_error_response(
+                    rpc_id=rpc_id,
+                    code=GENERIC_APPLICATION_ERROR,
+                    message=str(e),
+                    data=exception_data,
+                )
 
-                if rpc_id:
-                    logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
-                else:
-                    logger.debug(logs.RPC_NOTIFICATION_END, method_name)
+            if rpc_id:
+                logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
+            else:
+                logger.debug(logs.RPC_NOTIFICATION_END, method_name)
 
-                return result, is_notification
+            return result, is_notification
 
         # Invalid request format
         message = RPC_ERRORS[INVALID_REQUEST]
