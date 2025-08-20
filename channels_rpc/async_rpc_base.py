@@ -99,34 +99,36 @@ class AsyncRpcBase(RpcBase):
                     method_name = request_data.get("method")
                     params = request_data.get("arguments", {})
 
-                    # Build request object for backward compatibility
+                    # Build request object for backward compatibility with jsonrpc field
                     request = {
                         "method": method_name,
                         "arguments": params
                         if isinstance(params, dict)
                         else {"params": params},
                         "id": rpc_id,
+                        "jsonrpc": "2.0",  # Add JSON-RPC version for validation
                     }
 
             # Check if this is a pure JSON-RPC 2.0 response
             elif "result" in data or "error" in data:
-                logger.debug(f"Received RPC response: {data}")
+                logger.debug(f"Received pure JSON-RPC 2.0 response: {data}")
                 return data, True
 
             # Check if this is a pure JSON-RPC 2.0 request
             elif "method" in data:
-                logger.debug(f"Received RPC request: {data}")
+                logger.debug(f"Received pure JSON-RPC 2.0 request: {data}")
                 rpc_id = data.get("id")
                 method_name = data.get("method")
                 params = data.get("params", {})
 
-                # Build request object for backward compatibility
+                # For pure JSON-RPC 2.0 requests, keep format but add arguments field
                 request = {
                     "method": method_name,
                     "arguments": params
                     if isinstance(params, dict)
                     else {"params": params},
                     "id": rpc_id,
+                    "jsonrpc": "2.0",  # Preserve JSON-RPC version for validation
                 }
             else:
                 # Not a recognized format
