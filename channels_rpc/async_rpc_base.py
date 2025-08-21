@@ -152,44 +152,35 @@ class AsyncRpcBase(RpcBase):
             )
             return result, False
 
-            # Continue processing the request
-            is_notification = rpc_id is None
-            logger.debug(logs.CALL_INTERCEPTED, request)
+        # Continue processing the request
+        is_notification = rpc_id is None
+        logger.debug(logs.CALL_INTERCEPTED, request)
 
-            if rpc_id:
-                logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
-            else:
-                logger.info(logs.RPC_NOTIFICATION_START, method_name)
+        if rpc_id:
+            logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
+        else:
+            logger.info(logs.RPC_NOTIFICATION_START, method_name)
 
-            try:
-                result = await self.process_call(
-                    request, is_notification=is_notification
-                )
-            except JsonRpcError as e:
-                result = e.as_dict()
-            except Exception as e:
-                logger.debug("Application error: %s", e)
-                exception_data = e.args[0] if len(e.args) == 1 else e.args
-                result = generate_error_response(
-                    rpc_id=rpc_id,
-                    code=GENERIC_APPLICATION_ERROR,
-                    message=str(e),
-                    data=exception_data,
-                )
+        try:
+            result = await self.process_call(request, is_notification=is_notification)
+        except JsonRpcError as e:
+            result = e.as_dict()
+        except Exception as e:
+            logger.debug("Application error: %s", e)
+            exception_data = e.args[0] if len(e.args) == 1 else e.args
+            result = generate_error_response(
+                rpc_id=rpc_id,
+                code=GENERIC_APPLICATION_ERROR,
+                message=str(e),
+                data=exception_data,
+            )
 
-            if rpc_id:
-                logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
-            else:
-                logger.debug(logs.RPC_NOTIFICATION_END, method_name)
+        if rpc_id:
+            logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
+        else:
+            logger.debug(logs.RPC_NOTIFICATION_END, method_name)
 
-            return result, is_notification
-
-        # Invalid request format
-        message = RPC_ERRORS[INVALID_REQUEST]
-        result = generate_error_response(
-            rpc_id=None, code=INVALID_REQUEST, message=message
-        )
-        return result, False
+        return result, is_notification
 
     async def _base_receive_json(self, data: dict[str, Any]) -> None:
         logger.debug("Received JSON: %s", data)
