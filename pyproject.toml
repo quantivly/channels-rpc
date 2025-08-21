@@ -3,7 +3,7 @@ authors = ["Zvi Baratz <zvi.baratz@quantivly.com>"]
 description = "JSON-RPC implementation for Django's channels library."
 name = "channels-rpc"
 readme = "README.md"
-version = "0.3.0"
+version = "0.3.3"
 
 [tool.poetry.dependencies]
 python = ">=3.9"
