@@ -73,6 +73,10 @@ class AsyncRpcBase(RpcBase):
             return result, False
 
         # Handle JSON-RPC 2.0 and mixed format
+        request = None
+        rpc_id = None
+        method_name = None
+
         if isinstance(data, dict):
             # Check for mixed format (both "request" and "response" fields)
             if "request" in data and "response" in data:
@@ -138,6 +142,15 @@ class AsyncRpcBase(RpcBase):
                     rpc_id=None, code=INVALID_REQUEST, message=message
                 )
                 return result, False
+
+        # Ensure we have a valid request to process
+        if request is None:
+            logger.warning(f"No valid request could be extracted from: {data}")
+            message = RPC_ERRORS[INVALID_REQUEST]
+            result = generate_error_response(
+                rpc_id=None, code=INVALID_REQUEST, message=message
+            )
+            return result, False
 
             # Continue processing the request
             is_notification = rpc_id is None
