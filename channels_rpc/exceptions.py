@@ -53,7 +53,7 @@ def generate_error_response(
 class JsonRpcError(Exception):
     """General JSON-RPC exception class."""
 
-    def __init__(self, rpc_id: int, code: int):
+    def __init__(self, rpc_id: int, code: int, data: Any = None):
         """Initialize a new :class:`JsonRpcError` instance.
 
         Parameters
@@ -62,11 +62,12 @@ class JsonRpcError(Exception):
             Call ID.
         code : int
             RPC error code.
-        data : _type_, optional
-            _description_, by default None
+        data : Any, optional
+            Additional error context data, by default None
         """
         self.rpc_id = rpc_id
         self.code = code
+        self.data = data
 
     def as_dict(self) -> dict[str, Any]:
         """Return an error response dictionary.
@@ -77,8 +78,24 @@ class JsonRpcError(Exception):
             Error response.
         """
         message = RPC_ERRORS[self.code]
+
+        # Enhance error message with context from data
+        if self.data:
+            if self.code == METHOD_NOT_FOUND and isinstance(self.data, dict):
+                method = self.data.get("method")
+                if method:
+                    message = f"{message}: '{method}'"
+            elif self.code == INVALID_REQUEST and isinstance(self.data, dict):
+                if "version" in self.data:
+                    message = f"{message}: Invalid JSON-RPC version '{self.data['version']}', expected '2.0'"
+                elif "field" in self.data:
+                    message = f"{message}: {self.data['field']}"
+            elif self.code == INVALID_PARAMS and isinstance(self.data, dict):
+                if "expected" in self.data and "actual" in self.data:
+                    message = f"{message}: Expected {self.data['expected']}, got {self.data['actual']}"
+
         return generate_error_response(
-            rpc_id=self.rpc_id, code=self.code, message=message
+            rpc_id=self.rpc_id, code=self.code, message=message, data=self.data
         )
 
     def __str__(self) -> str:
