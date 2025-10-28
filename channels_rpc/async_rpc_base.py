@@ -103,37 +103,40 @@ class AsyncRpcBase(RpcBase):
                     method_name = request_data.get("method")
                     params = request_data.get("arguments", {})
 
-                    # Build request object for backward compatibility with jsonrpc field
+                    # Build request object - preserve jsonrpc field if present
                     request = {
                         "method": method_name,
                         "arguments": params
                         if isinstance(params, dict)
                         else {"params": params},
                         "id": rpc_id,
-                        "jsonrpc": "2.0",  # Add JSON-RPC version for validation
                     }
+                    # Preserve jsonrpc field from original request for validation
+                    if "jsonrpc" in request_data:
+                        request["jsonrpc"] = request_data["jsonrpc"]
 
             # Check if this is a pure JSON-RPC 2.0 response
             elif "result" in data or "error" in data:
                 logger.debug(f"Received pure JSON-RPC 2.0 response: {data}")
                 return data, True
 
-            # Check if this is a pure JSON-RPC 2.0 request
-            elif "method" in data:
+            # Check if this is a pure JSON-RPC 2.0 request (or attempt)
+            elif "jsonrpc" in data or "method" in data or "params" in data:
                 logger.debug(f"Received pure JSON-RPC 2.0 request: {data}")
                 rpc_id = data.get("id")
                 method_name = data.get("method")
                 params = data.get("params", {})
 
                 # For pure JSON-RPC 2.0 requests, keep format but add arguments field
+                # Don't wrap params if they're already the wrong type - let validation catch it
                 request = {
                     "method": method_name,
-                    "arguments": params
-                    if isinstance(params, dict)
-                    else {"params": params},
+                    "params": params,  # Use params directly for validation
                     "id": rpc_id,
-                    "jsonrpc": "2.0",  # Preserve JSON-RPC version for validation
                 }
+                # Preserve jsonrpc field from original request for validation
+                if "jsonrpc" in data:
+                    request["jsonrpc"] = data["jsonrpc"]
             else:
                 # Not a recognized format
                 logger.warning(f"Unrecognized message format: {data}")
@@ -151,6 +154,21 @@ class AsyncRpcBase(RpcBase):
                 rpc_id=None, code=INVALID_REQUEST, message=message
             )
             return result, False
+
+        # Early validation of params/arguments type if present
+        params_field = "params" if "params" in request else "arguments" if "arguments" in request else None
+        if params_field:
+            params = request[params_field]
+            if not isinstance(params, (list, dict)):
+                from channels_rpc.exceptions import INVALID_PARAMS
+
+                logger.warning(f"Invalid {params_field} type: {type(params).__name__}")
+                result = generate_error_response(
+                    rpc_id=rpc_id,
+                    code=INVALID_PARAMS,
+                    message=f"{RPC_ERRORS[INVALID_PARAMS]}: Expected dict or list, got {type(params).__name__}",
+                )
+                return result, False
 
         # Continue processing the request
         is_notification = rpc_id is None
