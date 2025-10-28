@@ -214,10 +214,25 @@ class RpcBase:
         bad_json_rpc_version = data.get("jsonrpc") != "2.0"
         no_method = "method" not in data
         bad_method = not isinstance(data.get("method"), string_types)
+
+        # JSON-RPC 2.0 requires exact version match
         if bad_json_rpc_version:
             logger.warning(logs.INVALID_JSON_RPC_VERSION, data.get("jsonrpc"))
-        if no_method or bad_method:
-            raise JsonRpcError(rpc_id, INVALID_REQUEST)
+            raise JsonRpcError(
+                rpc_id, INVALID_REQUEST, data={"version": data.get("jsonrpc")}
+            )
+
+        if no_method:
+            raise JsonRpcError(
+                rpc_id, INVALID_REQUEST, data={"field": "Missing required 'method' field"}
+            )
+
+        if bad_method:
+            raise JsonRpcError(
+                rpc_id,
+                INVALID_REQUEST,
+                data={"field": f"'method' must be a string, got {type(data.get('method')).__name__}"},
+            )
         logger.debug("Call data is valid")
 
     def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
@@ -251,7 +266,7 @@ class RpcBase:
         try:
             method = methods[class_id][method_name]
         except KeyError as e:
-            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND) from e
+            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND, data={"method": method_name}) from e
         protocol = self.scope["type"]
         if not method.options[protocol]:
             raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
@@ -280,7 +295,14 @@ class RpcBase:
         params = data.get("params") or data.get("arguments") or {}
         if not isinstance(params, (list, dict)):
             rpc_id = data.get("id")
-            raise JsonRpcError(rpc_id, INVALID_PARAMS)
+            raise JsonRpcError(
+                rpc_id,
+                INVALID_PARAMS,
+                data={
+                    "expected": "dict or list",
+                    "actual": type(params).__name__,
+                },
+            )
         logger.debug("Call parameters found: %s", params)
         return params
 
