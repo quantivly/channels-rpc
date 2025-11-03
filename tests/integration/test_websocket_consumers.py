@@ -17,7 +17,7 @@ import pytest
 from channels.testing import WebsocketCommunicator
 
 from channels_rpc import AsyncJsonRpcWebsocketConsumer, JsonRpcWebsocketConsumer
-from channels_rpc.exceptions import PARSE_ERROR
+from channels_rpc.exceptions import JsonRpcErrorCode
 
 # ============================================================================
 # Sync WebSocket Consumer Tests
@@ -127,7 +127,7 @@ class TestSyncJsonRpcWebsocketConsumer:
 
     @pytest.mark.asyncio
     async def test_invalid_json_handling(self):
-        """Should handle invalid JSON with PARSE_ERROR."""
+        """Should handle invalid JSON with JsonRpcErrorCode.PARSE_ERROR."""
 
         class TestConsumer(JsonRpcWebsocketConsumer):
             pass
@@ -141,7 +141,7 @@ class TestSyncJsonRpcWebsocketConsumer:
         response = await communicator.receive_json_from()
 
         assert "error" in response
-        assert response["error"]["code"] == PARSE_ERROR
+        assert response["error"]["code"] == JsonRpcErrorCode.PARSE_ERROR
         assert response["id"] is None
 
         await communicator.disconnect()
@@ -260,7 +260,7 @@ class TestSyncJsonRpcWebsocketConsumer:
         response = await communicator.receive_json_from()
 
         assert "error" in response
-        assert response["error"]["code"] == PARSE_ERROR
+        assert response["error"]["code"] == JsonRpcErrorCode.PARSE_ERROR
 
         await communicator.disconnect()
 

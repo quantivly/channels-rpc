@@ -46,16 +46,6 @@ class JsonRpcErrorCode(IntEnum):
     PARSE_RESULT_ERROR = -32701  # Extension
 
 
-# Backward compatibility - module-level constants
-PARSE_ERROR: int = JsonRpcErrorCode.PARSE_ERROR
-INVALID_REQUEST: int = JsonRpcErrorCode.INVALID_REQUEST
-METHOD_NOT_FOUND: int = JsonRpcErrorCode.METHOD_NOT_FOUND
-INVALID_PARAMS: int = JsonRpcErrorCode.INVALID_PARAMS
-INTERNAL_ERROR: int = JsonRpcErrorCode.INTERNAL_ERROR
-GENERIC_APPLICATION_ERROR: int = JsonRpcErrorCode.GENERIC_APPLICATION_ERROR
-REQUEST_TOO_LARGE: int = JsonRpcErrorCode.REQUEST_TOO_LARGE
-PARSE_RESULT_ERROR: int = JsonRpcErrorCode.PARSE_RESULT_ERROR
-
 RPC_ERRORS: dict[int, str] = {
     JsonRpcErrorCode.PARSE_ERROR: "Parse Error",
     JsonRpcErrorCode.INVALID_REQUEST: "Invalid Request",
@@ -125,11 +115,15 @@ class JsonRpcError(Exception):
 
         # Enhance error message with context from data
         if self.data:
-            if self.code == METHOD_NOT_FOUND and isinstance(self.data, dict):
+            if self.code == JsonRpcErrorCode.METHOD_NOT_FOUND and isinstance(
+                self.data, dict
+            ):
                 method = self.data.get("method")
                 if method:
                     message = f"{message}: '{method}'"
-            elif self.code == INVALID_REQUEST and isinstance(self.data, dict):
+            elif self.code == JsonRpcErrorCode.INVALID_REQUEST and isinstance(
+                self.data, dict
+            ):
                 if "version" in self.data:
                     version = self.data["version"]
                     message = (
@@ -138,12 +132,16 @@ class JsonRpcError(Exception):
                     )
                 elif "field" in self.data:
                     message = f"{message}: {self.data['field']}"
-            elif self.code == INVALID_PARAMS and isinstance(self.data, dict):
+            elif self.code == JsonRpcErrorCode.INVALID_PARAMS and isinstance(
+                self.data, dict
+            ):
                 if "expected" in self.data and "actual" in self.data:
                     expected = self.data["expected"]
                     actual = self.data["actual"]
                     message = f"{message}: Expected {expected}, got {actual}"
-            elif self.code == REQUEST_TOO_LARGE and isinstance(self.data, dict):
+            elif self.code == JsonRpcErrorCode.REQUEST_TOO_LARGE and isinstance(
+                self.data, dict
+            ):
                 limit_type = self.data.get("limit_type", "unknown")
                 limit = self.data.get("limit", "unknown")
                 message = f"{message}: {limit_type} exceeds limit of {limit}"
@@ -180,6 +178,6 @@ class RequestTooLargeError(JsonRpcError):
         """
         super().__init__(
             rpc_id=rpc_id,
-            code=REQUEST_TOO_LARGE,
+            code=JsonRpcErrorCode.REQUEST_TOO_LARGE,
             data={"limit_type": limit_type, "limit": limit_value},
         )

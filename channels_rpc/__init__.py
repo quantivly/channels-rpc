@@ -14,10 +14,16 @@ Exceptions:
     - JsonRpcErrorCode: Enum of JSON-RPC 2.0 error codes
     - RequestTooLargeError: Exception for oversized requests
 
-Error Codes (backward compatibility):
-    - PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND
-    - INVALID_PARAMS, INTERNAL_ERROR
-    - GENERIC_APPLICATION_ERROR, PARSE_RESULT_ERROR, REQUEST_TOO_LARGE
+Error Codes:
+    Use the JsonRpcErrorCode enum to access error codes:
+    - JsonRpcErrorCode.PARSE_ERROR
+    - JsonRpcErrorCode.INVALID_REQUEST
+    - JsonRpcErrorCode.METHOD_NOT_FOUND
+    - JsonRpcErrorCode.INVALID_PARAMS
+    - JsonRpcErrorCode.INTERNAL_ERROR
+    - JsonRpcErrorCode.GENERIC_APPLICATION_ERROR
+    - JsonRpcErrorCode.PARSE_RESULT_ERROR
+    - JsonRpcErrorCode.REQUEST_TOO_LARGE
 
 Size Limits (for custom validation):
     - MAX_MESSAGE_SIZE, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH
@@ -28,14 +34,6 @@ from channels_rpc.async_json_rpc_websocket_consumer import (
     AsyncJsonRpcWebsocketConsumer,
 )
 from channels_rpc.exceptions import (
-    GENERIC_APPLICATION_ERROR,
-    INTERNAL_ERROR,
-    INVALID_PARAMS,
-    INVALID_REQUEST,
-    METHOD_NOT_FOUND,
-    PARSE_ERROR,
-    PARSE_RESULT_ERROR,
-    REQUEST_TOO_LARGE,
     JsonRpcError,
     JsonRpcErrorCode,
     RequestTooLargeError,
@@ -50,19 +48,11 @@ from channels_rpc.limits import (
 )
 
 __all__ = [
-    "GENERIC_APPLICATION_ERROR",
-    "INTERNAL_ERROR",
-    "INVALID_PARAMS",
-    "INVALID_REQUEST",
     "MAX_ARRAY_LENGTH",
     "MAX_MESSAGE_SIZE",
     "MAX_METHOD_NAME_LENGTH",
     "MAX_NESTING_DEPTH",
     "MAX_STRING_LENGTH",
-    "METHOD_NOT_FOUND",
-    "PARSE_ERROR",
-    "PARSE_RESULT_ERROR",
-    "REQUEST_TOO_LARGE",
     "AsyncJsonRpcWebsocketConsumer",
     "JsonRpcError",
     "JsonRpcErrorCode",

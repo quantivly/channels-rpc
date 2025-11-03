@@ -17,11 +17,7 @@ from __future__ import annotations
 import pytest
 
 from channels_rpc.async_rpc_base import AsyncRpcBase
-from channels_rpc.exceptions import (
-    GENERIC_APPLICATION_ERROR,
-    INVALID_REQUEST,
-    METHOD_NOT_FOUND,
-)
+from channels_rpc.exceptions import JsonRpcErrorCode
 
 
 @pytest.mark.unit
@@ -218,19 +214,19 @@ class TestAsyncInterceptCall:
 
     @pytest.mark.asyncio
     async def test_intercept_call_with_empty_data(self, mock_async_rpc_consumer):
-        """Should return INVALID_REQUEST error for empty data."""
+        """Should return JsonRpcErrorCode.INVALID_REQUEST error for empty data."""
         result, is_notification = await mock_async_rpc_consumer.intercept_call({})
 
         assert result["jsonrpc"] == "2.0"
-        assert result["error"]["code"] == INVALID_REQUEST
+        assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
         assert is_notification is False
 
     @pytest.mark.asyncio
     async def test_intercept_call_with_none_data(self, mock_async_rpc_consumer):
-        """Should return INVALID_REQUEST error for None data."""
+        """Should return JsonRpcErrorCode.INVALID_REQUEST error for None data."""
         result, is_notification = await mock_async_rpc_consumer.intercept_call(None)
 
-        assert result["error"]["code"] == INVALID_REQUEST
+        assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
         assert is_notification is False
 
     @pytest.mark.asyncio
@@ -238,12 +234,12 @@ class TestAsyncInterceptCall:
     async def test_intercept_call_with_invalid_type(
         self, mock_async_rpc_consumer, invalid_data
     ):
-        """Should return INVALID_REQUEST for non-dict data."""
+        """Should return JsonRpcErrorCode.INVALID_REQUEST for non-dict data."""
         result, is_notification = await mock_async_rpc_consumer.intercept_call(
             invalid_data
         )
 
-        assert result["error"]["code"] == INVALID_REQUEST
+        assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
         assert is_notification is False
 
     @pytest.mark.asyncio
@@ -288,7 +284,7 @@ class TestAsyncInterceptCall:
         result, is_notification = await async_consumer_with_methods.intercept_call(data)
 
         assert "error" in result
-        assert result["error"]["code"] == METHOD_NOT_FOUND
+        assert result["error"]["code"] == JsonRpcErrorCode.METHOD_NOT_FOUND
         assert result["id"] == 1
         assert is_notification is False
 
@@ -314,7 +310,7 @@ class TestAsyncInterceptCall:
         result, is_notification = await consumer.intercept_call(data)
 
         assert "error" in result
-        assert result["error"]["code"] == GENERIC_APPLICATION_ERROR
+        assert result["error"]["code"] == JsonRpcErrorCode.GENERIC_APPLICATION_ERROR
         # Security fix: error message should not leak internal details
         assert result["error"]["message"] == "Application error occurred"
         assert "data" not in result["error"] or result["error"]["data"] is None
@@ -449,7 +445,7 @@ class TestAsyncBaseReceiveJson:
         assert len(async_consumer_with_methods.sent_messages) == 1
         response = async_consumer_with_methods.sent_messages[0]
         assert "error" in response
-        assert response["error"]["code"] == METHOD_NOT_FOUND
+        assert response["error"]["code"] == JsonRpcErrorCode.METHOD_NOT_FOUND
 
     @pytest.mark.asyncio
     async def test_base_receive_json_no_send_for_response(

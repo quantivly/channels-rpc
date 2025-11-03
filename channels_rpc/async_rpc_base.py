@@ -8,9 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 from channels_rpc import logs
 from channels_rpc.exceptions import (
-    GENERIC_APPLICATION_ERROR,
-    INTERNAL_ERROR,
     JsonRpcError,
+    JsonRpcErrorCode,
     generate_error_response,
 )
 from channels_rpc.rpc_base import RpcBase, RpcMethodWrapper
@@ -173,7 +172,7 @@ class AsyncRpcBase(RpcBase):
             logger.info("Application error in RPC method: %s", e)
             result = generate_error_response(
                 rpc_id=rpc_id,
-                code=GENERIC_APPLICATION_ERROR,
+                code=JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
                 message="Application error occurred",
                 data=None,  # Never leak internal details
             )
@@ -182,7 +181,7 @@ class AsyncRpcBase(RpcBase):
             logger.exception("Unexpected error processing RPC call")
             result = generate_error_response(
                 rpc_id=rpc_id,
-                code=INTERNAL_ERROR,
+                code=JsonRpcErrorCode.INTERNAL_ERROR,
                 message="Internal server error",
                 data=None,  # Never leak internal details
             )

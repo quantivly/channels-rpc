@@ -10,7 +10,11 @@ import logging
 from typing import Any
 
 from channels_rpc import logs
-from channels_rpc.exceptions import INVALID_REQUEST, RPC_ERRORS, generate_error_response
+from channels_rpc.exceptions import (
+    RPC_ERRORS,
+    JsonRpcErrorCode,
+    generate_error_response,
+)
 
 logger = logging.getLogger("django.channels.rpc")
 
@@ -46,18 +50,22 @@ def validate_rpc_data(data: Any) -> tuple[dict[str, Any] | None, bool]:
     # Check for empty data
     if not data:
         logger.warning(logs.EMPTY_CALL)
-        message = RPC_ERRORS[INVALID_REQUEST]
+        message = RPC_ERRORS[JsonRpcErrorCode.INVALID_REQUEST]
         return (
-            generate_error_response(rpc_id=None, code=INVALID_REQUEST, message=message),
+            generate_error_response(
+                rpc_id=None, code=JsonRpcErrorCode.INVALID_REQUEST, message=message
+            ),
             False,
         )
 
     # Check data type
     if not isinstance(data, dict):
         logger.warning("Invalid message type: %s", type(data).__name__)
-        message = RPC_ERRORS[INVALID_REQUEST]
+        message = RPC_ERRORS[JsonRpcErrorCode.INVALID_REQUEST]
         return (
-            generate_error_response(rpc_id=None, code=INVALID_REQUEST, message=message),
+            generate_error_response(
+                rpc_id=None, code=JsonRpcErrorCode.INVALID_REQUEST, message=message
+            ),
             False,
         )
 

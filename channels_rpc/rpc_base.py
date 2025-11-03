@@ -23,12 +23,8 @@ from typing import TYPE_CHECKING, Any
 
 from channels_rpc import logs
 from channels_rpc.exceptions import (
-    GENERIC_APPLICATION_ERROR,
-    INTERNAL_ERROR,
-    INVALID_PARAMS,
-    INVALID_REQUEST,
-    METHOD_NOT_FOUND,
     JsonRpcError,
+    JsonRpcErrorCode,
     generate_error_response,
 )
 from channels_rpc.utils import create_json_rpc_request, create_json_rpc_response
@@ -342,13 +338,15 @@ class RpcBase:
         if bad_json_rpc_version:
             logger.warning(logs.INVALID_JSON_RPC_VERSION, data.get("jsonrpc"))
             raise JsonRpcError(
-                rpc_id, INVALID_REQUEST, data={"version": data.get("jsonrpc")}
+                rpc_id,
+                JsonRpcErrorCode.INVALID_REQUEST,
+                data={"version": data.get("jsonrpc")},
             )
 
         if no_method:
             raise JsonRpcError(
                 rpc_id,
-                INVALID_REQUEST,
+                JsonRpcErrorCode.INVALID_REQUEST,
                 data={"field": "Missing required 'method' field"},
             )
 
@@ -356,7 +354,7 @@ class RpcBase:
             method_type = type(data.get("method")).__name__
             raise JsonRpcError(
                 rpc_id,
-                INVALID_REQUEST,
+                JsonRpcErrorCode.INVALID_REQUEST,
                 data={"field": f"'method' must be a string, got {method_type}"},
             )
 
@@ -399,18 +397,18 @@ class RpcBase:
             method = methods[class_id][method_name]
         except KeyError as e:
             raise JsonRpcError(
-                rpc_id, METHOD_NOT_FOUND, data={"method": method_name}
+                rpc_id, JsonRpcErrorCode.METHOD_NOT_FOUND, data={"method": method_name}
             ) from e
         protocol = self.scope["type"]
         # Handle both RpcMethodWrapper and raw Callable (backward compatibility)
         if isinstance(method, RpcMethodWrapper):
             if not method.options[protocol]:
-                raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
+                raise JsonRpcError(rpc_id, JsonRpcErrorCode.METHOD_NOT_FOUND)
             logger.debug("Method found: %s", method.func.__name__)
         else:
             # Legacy raw callable with options attribute
             if not getattr(method, "options", {}).get(protocol, True):
-                raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
+                raise JsonRpcError(rpc_id, JsonRpcErrorCode.METHOD_NOT_FOUND)
             logger.debug("Method found: %s", method.__name__)
         return method
 
@@ -451,7 +449,7 @@ class RpcBase:
             rpc_id = data.get("id")
             raise JsonRpcError(
                 rpc_id,
-                INVALID_PARAMS,
+                JsonRpcErrorCode.INVALID_PARAMS,
                 data={
                     "expected": "dict or list",
                     "actual": type(params).__name__,
@@ -563,7 +561,7 @@ class RpcBase:
             logger.info("Application error in RPC method: %s", e)
             result = generate_error_response(
                 rpc_id=rpc_id,
-                code=GENERIC_APPLICATION_ERROR,
+                code=JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
                 message="Application error occurred",
                 data=None,  # Never leak internal details
             )
@@ -572,7 +570,7 @@ class RpcBase:
             logger.exception("Unexpected error processing RPC call")
             result = generate_error_response(
                 rpc_id=rpc_id,
-                code=INTERNAL_ERROR,
+                code=JsonRpcErrorCode.INTERNAL_ERROR,
                 message="Internal server error",
                 data=None,  # Never leak internal details
             )

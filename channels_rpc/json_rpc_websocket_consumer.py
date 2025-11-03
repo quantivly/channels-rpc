@@ -6,9 +6,8 @@ from typing import Any
 from channels.generic.websocket import JsonWebsocketConsumer
 
 from channels_rpc.exceptions import (
-    PARSE_ERROR,
-    PARSE_RESULT_ERROR,
     RPC_ERRORS,
+    JsonRpcErrorCode,
     generate_error_response,
 )
 from channels_rpc.rpc_base import RpcBase
@@ -31,7 +30,11 @@ class JsonRpcWebsocketConsumer(JsonWebsocketConsumer, RpcBase):
         try:
             return json.loads(data)
         except json.decoder.JSONDecodeError:
-            frame = generate_error_response(None, PARSE_ERROR, RPC_ERRORS[PARSE_ERROR])
+            frame = generate_error_response(
+                None,
+                JsonRpcErrorCode.PARSE_ERROR,
+                RPC_ERRORS[JsonRpcErrorCode.PARSE_ERROR],
+            )
             self.send_json(frame)
 
     def encode_json(self, data: dict[str, Any]) -> str:
@@ -52,8 +55,8 @@ class JsonRpcWebsocketConsumer(JsonWebsocketConsumer, RpcBase):
         except TypeError:
             frame = generate_error_response(
                 None,
-                PARSE_ERROR,
-                RPC_ERRORS[PARSE_RESULT_ERROR],
+                JsonRpcErrorCode.PARSE_ERROR,
+                RPC_ERRORS[JsonRpcErrorCode.PARSE_RESULT_ERROR],
                 str(data["result"]),
             )
             return json.dumps(frame)

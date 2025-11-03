@@ -15,14 +15,7 @@ import pytest  # noqa: E402
 from channels.testing import WebsocketCommunicator  # noqa: E402
 
 from channels_rpc.async_rpc_base import AsyncRpcBase  # noqa: E402
-from channels_rpc.exceptions import (  # noqa: E402
-    GENERIC_APPLICATION_ERROR,
-    INTERNAL_ERROR,
-    INVALID_PARAMS,
-    INVALID_REQUEST,
-    METHOD_NOT_FOUND,
-    PARSE_ERROR,
-)
+from channels_rpc.exceptions import JsonRpcErrorCode  # noqa: E402
 from channels_rpc.rpc_base import RpcBase  # noqa: E402
 
 # ============================================================================
@@ -32,12 +25,12 @@ from channels_rpc.rpc_base import RpcBase  # noqa: E402
 
 @pytest.fixture(
     params=[
-        PARSE_ERROR,
-        INVALID_REQUEST,
-        METHOD_NOT_FOUND,
-        INVALID_PARAMS,
-        INTERNAL_ERROR,
-        GENERIC_APPLICATION_ERROR,
+        JsonRpcErrorCode.PARSE_ERROR,
+        JsonRpcErrorCode.INVALID_REQUEST,
+        JsonRpcErrorCode.METHOD_NOT_FOUND,
+        JsonRpcErrorCode.INVALID_PARAMS,
+        JsonRpcErrorCode.INTERNAL_ERROR,
+        JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
     ]
 )
 def error_code(request):
