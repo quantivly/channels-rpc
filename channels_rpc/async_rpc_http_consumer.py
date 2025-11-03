@@ -2,16 +2,16 @@ import json
 
 from channels.generic.http import AsyncHttpConsumer
 
+from channels_rpc.async_rpc_base import AsyncRpcBase
 from channels_rpc.exceptions import (
     INVALID_REQUEST,
     PARSE_ERROR,
     RPC_ERRORS,
     generate_error_response,
 )
-from channels_rpc.rpc_base import RpcBase
 
 
-class AsyncRpcHttpConsumer(AsyncHttpConsumer, RpcBase):
+class AsyncRpcHttpConsumer(AsyncHttpConsumer, AsyncRpcBase):
     async def handle(self, body):
         """
         Called on HTTP request
@@ -26,8 +26,9 @@ class AsyncRpcHttpConsumer(AsyncHttpConsumer, RpcBase):
                 result = generate_error_response(
                     None, PARSE_ERROR, RPC_ERRORS[PARSE_ERROR]
                 )
+                is_notification = False
             else:
-                result, is_notification = self.intercept_call(data)
+                result, is_notification = await self.intercept_call(data)
 
             # Set response status code
             # http://www.jsonrpc.org/historical/json-rpc-over-http.html#response-codes
@@ -45,8 +46,9 @@ class AsyncRpcHttpConsumer(AsyncHttpConsumer, RpcBase):
             result = generate_error_response(
                 None, INVALID_REQUEST, RPC_ERRORS[INVALID_REQUEST]
             )
+            status_code = 400
 
-        self.send_response(
+        await self.send_response(
             status_code,
             json.dumps(result),
             headers=[

@@ -20,6 +20,8 @@ pytest = "^7.3.1"
 pytest-asyncio = "^0.21.0"
 pytest-cov = "^4.0.0"
 ruff = "^0.1.1"
+daphne = "^4.2.1"
+pytest-mock = "^3.15.1"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
@@ -28,15 +30,52 @@ requires = ["poetry-core"]
 # ==== pytest ====
 [tool.pytest.ini_options]
 minversion = "6.0"
-python_files = [
-  "tests.py",
-  "test_*.py",
+python_files = ["tests.py", "test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+# Django settings for testing
+DJANGO_SETTINGS_MODULE = "tests.settings"
+
+# Test markers for organization
+markers = [
+    "unit: Unit tests for individual functions/methods",
+    "integration: Integration tests for complete flows",
+    "sync: Tests for synchronous consumers",
+    "async: Tests for asynchronous consumers",
+    "websocket: WebSocket-specific tests",
+    "http: HTTP consumer tests",
+    "slow: Tests that take longer to run",
+]
+
+# Additional pytest options
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "-ra",
 ]
 
 # ==== Coverage ====
 [tool.coverage.run]
 include = ["channels_rpc/**"]
-omit = ["*/tests/*"]
+omit = ["*/tests/*", "*/migrations/*"]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
 
 [tool.black]
 skip-string-normalization = true
