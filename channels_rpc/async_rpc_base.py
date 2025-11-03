@@ -10,8 +10,6 @@ from channels_rpc import logs
 from channels_rpc.exceptions import (
     GENERIC_APPLICATION_ERROR,
     INTERNAL_ERROR,
-    INVALID_REQUEST,
-    RPC_ERRORS,
     JsonRpcError,
     generate_error_response,
 )
@@ -59,6 +57,8 @@ class AsyncRpcBase(RpcBase):
     ) -> Any:
         """Execute RPC method with appropriate parameter unpacking.
 
+        Uses cached introspection result for optimal performance.
+
         Parameters
         ----------
         method : Callable | RpcMethodWrapper
@@ -73,15 +73,15 @@ class AsyncRpcBase(RpcBase):
         """
         import asyncio  # noqa: PLC0415
 
-        # Unwrap RpcMethodWrapper if needed
-        if hasattr(method, "func"):
+        # Unwrap RpcMethodWrapper and get cached introspection result
+        if isinstance(method, RpcMethodWrapper):
             actual_method = method.func
+            accepts_consumer = method.accepts_consumer  # Use cached value
         else:
+            # Fallback for raw callables (shouldn't happen in normal flow)
             actual_method = method
-
-        # Check if method accepts **kwargs (can inject consumer)
-        spec = getfullargspec(actual_method)
-        accepts_consumer = spec.varkw is not None  # Has **kwargs parameter
+            spec = getfullargspec(actual_method)
+            accepts_consumer = spec.varkw is not None
 
         # Execute with appropriate calling convention
         if isinstance(params, list):
@@ -105,7 +105,7 @@ class AsyncRpcBase(RpcBase):
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
         rpc_id, _ = self.get_rpc_id(data)
-        logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
+        logger.debug("Executing %s(%s)", method.__qualname__, json.dumps(params))
         result = await self.execute_called_method(method, params)
         if not is_notification:
             logger.debug("Execution result: %s", result)
@@ -118,7 +118,7 @@ class AsyncRpcBase(RpcBase):
             return response
         elif result is not None:
             logger.warning("The notification method shouldn't return any result")
-            logger.warning(f"method: {method.__qualname__}, params: {params}")
+            logger.warning("method: %s, params: %s", method.__qualname__, params)
             result = None
         return result
 
@@ -137,30 +137,19 @@ class AsyncRpcBase(RpcBase):
         tuple[Any, bool]
             Result and whether it's a notification.
         """
+        from channels_rpc.validation import validate_rpc_data  # noqa: PLC0415
+
         logger.debug("Intercepting call: %s", data)
 
         result: dict[str, Any] | None
 
-        if not data:
-            logger.warning(logs.EMPTY_CALL)
-            message = RPC_ERRORS[INVALID_REQUEST]
-            result = generate_error_response(
-                rpc_id=None, code=INVALID_REQUEST, message=message
-            )
-            return result, False
+        # Use shared validation logic
+        error, is_response = validate_rpc_data(data)
+        if error or is_response:
+            return error or data, is_response
 
-        if not isinstance(data, dict):
-            logger.warning(f"Invalid message type: {type(data).__name__}")
-            message = RPC_ERRORS[INVALID_REQUEST]
-            result = generate_error_response(
-                rpc_id=None, code=INVALID_REQUEST, message=message
-            )
-            return result, False
-
-        # Check if this is a JSON-RPC 2.0 response
-        if "result" in data or "error" in data:
-            logger.debug(f"Received JSON-RPC 2.0 response: {data}")
-            return data, True
+        # After validation, data is guaranteed to be a dict
+        assert isinstance(data, dict)  # nosec B101 - Type assertion for mypy
 
         # Must be a JSON-RPC 2.0 request (or attempt)
         rpc_id = data.get("id")
