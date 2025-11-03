@@ -1,27 +1,70 @@
 """Exceptions for the channels-rpc package."""
 
 import json
+from enum import IntEnum
 from typing import Any
 
 from channels_rpc.utils import create_json_rpc_error_response
 
-PARSE_ERROR: int = -32700
-INVALID_REQUEST: int = -32600
-METHOD_NOT_FOUND: int = -32601
-INVALID_PARAMS: int = -32602
-INTERNAL_ERROR: int = -32603
-GENERIC_APPLICATION_ERROR: int = -32000
-PARSE_RESULT_ERROR: int = -32701
-REQUEST_TOO_LARGE: int = -32001  # Server-defined error code
+
+class JsonRpcErrorCode(IntEnum):
+    """JSON-RPC 2.0 error codes.
+
+    Standard error codes are defined by the JSON-RPC 2.0 specification.
+    Server-defined error codes are in the range -32099 to -32000.
+
+    Attributes
+    ----------
+    PARSE_ERROR : int
+        Invalid JSON was received (-32700).
+    INVALID_REQUEST : int
+        The JSON sent is not a valid Request object (-32600).
+    METHOD_NOT_FOUND : int
+        The method does not exist / is not available (-32601).
+    INVALID_PARAMS : int
+        Invalid method parameter(s) (-32602).
+    INTERNAL_ERROR : int
+        Internal JSON-RPC error (-32603).
+    GENERIC_APPLICATION_ERROR : int
+        Server-defined application error (-32000).
+    REQUEST_TOO_LARGE : int
+        Server-defined error for oversized requests (-32001).
+    PARSE_RESULT_ERROR : int
+        Server-defined error for result parsing (-32701).
+    """
+
+    # Standard JSON-RPC 2.0 error codes
+    PARSE_ERROR = -32700
+    INVALID_REQUEST = -32600
+    METHOD_NOT_FOUND = -32601
+    INVALID_PARAMS = -32602
+    INTERNAL_ERROR = -32603
+
+    # Server-defined error codes (-32099 to -32000, with -32701 extension)
+    GENERIC_APPLICATION_ERROR = -32000
+    REQUEST_TOO_LARGE = -32001
+    PARSE_RESULT_ERROR = -32701  # Extension
+
+
+# Backward compatibility - module-level constants
+PARSE_ERROR: int = JsonRpcErrorCode.PARSE_ERROR
+INVALID_REQUEST: int = JsonRpcErrorCode.INVALID_REQUEST
+METHOD_NOT_FOUND: int = JsonRpcErrorCode.METHOD_NOT_FOUND
+INVALID_PARAMS: int = JsonRpcErrorCode.INVALID_PARAMS
+INTERNAL_ERROR: int = JsonRpcErrorCode.INTERNAL_ERROR
+GENERIC_APPLICATION_ERROR: int = JsonRpcErrorCode.GENERIC_APPLICATION_ERROR
+REQUEST_TOO_LARGE: int = JsonRpcErrorCode.REQUEST_TOO_LARGE
+PARSE_RESULT_ERROR: int = JsonRpcErrorCode.PARSE_RESULT_ERROR
+
 RPC_ERRORS: dict[int, str] = {
-    PARSE_ERROR: "Parse Error",
-    INVALID_REQUEST: "Invalid Request",
-    METHOD_NOT_FOUND: "Method Not Found",
-    INVALID_PARAMS: "Invalid Params",
-    INTERNAL_ERROR: "Internal Error",
-    GENERIC_APPLICATION_ERROR: "Application Error",
-    PARSE_RESULT_ERROR: "Error while parsing result",
-    REQUEST_TOO_LARGE: "Request Too Large",
+    JsonRpcErrorCode.PARSE_ERROR: "Parse Error",
+    JsonRpcErrorCode.INVALID_REQUEST: "Invalid Request",
+    JsonRpcErrorCode.METHOD_NOT_FOUND: "Method Not Found",
+    JsonRpcErrorCode.INVALID_PARAMS: "Invalid Params",
+    JsonRpcErrorCode.INTERNAL_ERROR: "Internal Error",
+    JsonRpcErrorCode.GENERIC_APPLICATION_ERROR: "Application Error",
+    JsonRpcErrorCode.PARSE_RESULT_ERROR: "Error while parsing result",
+    JsonRpcErrorCode.REQUEST_TOO_LARGE: "Request Too Large",
 }
 
 
