@@ -9,6 +9,7 @@ References
 ----------
 - https://nonamesecurity.com/learn/what-is-json-rpc/
 """
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,6 @@ from collections import defaultdict
 from collections.abc import Callable
 from inspect import getfullargspec
 from typing import Any
-
-from six import string_types
 
 from channels_rpc import logs
 from channels_rpc.exceptions import (
@@ -84,7 +83,6 @@ class RpcBase:
         INTERNAL_ERROR: 500,
         GENERIC_APPLICATION_ERROR: 500,
     }
-    RPC_ID_KEYS: list[str] = ["id", "call_id"]
 
     rpc_methods: defaultdict = defaultdict(dict)
     rpc_notifications: defaultdict = defaultdict(dict)
@@ -213,7 +211,7 @@ class RpcBase:
         rpc_id = data.get("id")
         bad_json_rpc_version = data.get("jsonrpc") != "2.0"
         no_method = "method" not in data
-        bad_method = not isinstance(data.get("method"), string_types)
+        bad_method = not isinstance(data.get("method"), str)
 
         # JSON-RPC 2.0 requires exact version match
         if bad_json_rpc_version:
@@ -224,14 +222,17 @@ class RpcBase:
 
         if no_method:
             raise JsonRpcError(
-                rpc_id, INVALID_REQUEST, data={"field": "Missing required 'method' field"}
+                rpc_id,
+                INVALID_REQUEST,
+                data={"field": "Missing required 'method' field"},
             )
 
         if bad_method:
+            method_type = type(data.get("method")).__name__
             raise JsonRpcError(
                 rpc_id,
                 INVALID_REQUEST,
-                data={"field": f"'method' must be a string, got {type(data.get('method')).__name__}"},
+                data={"field": f"'method' must be a string, got {method_type}"},
             )
         logger.debug("Call data is valid")
 
@@ -258,7 +259,7 @@ class RpcBase:
             RPC method not supported.
         """
         self.validate_call(data)
-        rpc_id = data.get("id") or data.get("call_id")
+        rpc_id = data.get("id")
         method_name = data["method"]
         logger.debug("Getting method: %s", method_name)
         class_id = id(self.__class__)
@@ -266,7 +267,9 @@ class RpcBase:
         try:
             method = methods[class_id][method_name]
         except KeyError as e:
-            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND, data={"method": method_name}) from e
+            raise JsonRpcError(
+                rpc_id, METHOD_NOT_FOUND, data={"method": method_name}
+            ) from e
         protocol = self.scope["type"]
         if not method.options[protocol]:
             raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
@@ -293,7 +296,7 @@ class RpcBase:
         """
         logger.debug("Getting call parameters: %s", data)
         params = data.get("params") or data.get("arguments") or {}
-        if not isinstance(params, (list, dict)):
+        if not isinstance(params, list | dict):
             rpc_id = data.get("id")
             raise JsonRpcError(
                 rpc_id,
@@ -306,7 +309,7 @@ class RpcBase:
         logger.debug("Call parameters found: %s", params)
         return params
 
-    def get_rpc_id(self, data: dict[str, Any]) -> tuple[str | None, str | None]:
+    def get_rpc_id(self, data: dict[str, Any]) -> tuple[str | None, str]:
         """Get the RPC ID.
 
         Parameters
@@ -316,16 +319,14 @@ class RpcBase:
 
         Returns
         -------
-        tuple[str | None, str | None]
-            RPC ID and RPC ID key.
+        tuple[str | None, str]
+            RPC ID and RPC ID key (always "id" per JSON-RPC 2.0 spec).
         """
         logger.debug("Extracting RPC ID: %s", data)
-        for rpc_id_key in self.RPC_ID_KEYS:
-            if rpc_id_key in data:
-                logger.debug(
-                    "RPC ID with key '%s' found: %s", rpc_id_key, data[rpc_id_key]
-                )
-                return data[rpc_id_key], rpc_id_key
+        rpc_id = data.get("id")
+        if rpc_id is not None:
+            logger.debug("RPC ID found: %s", rpc_id)
+        return rpc_id, "id"
 
     def process_call(
         self, data: dict[str, Any], *, is_notification: bool = False
@@ -366,17 +367,17 @@ class RpcBase:
         return result
 
     def intercept_call(self, data: dict[str, Any]) -> tuple[Any, bool]:
-        """Handles calls and notifications.
+        """Handle JSON-RPC 2.0 requests and responses.
 
         Parameters
         ----------
         data : dict[str, Any]
-            Received message data.
+            JSON-RPC 2.0 message data.
 
         Returns
         -------
         tuple[Any, bool]
-            Result of the remote procedure call and whether it is a notification.
+            Result and whether it's a notification.
         """
         logger.debug("Intercepting call: %s", data)
         if not data:
@@ -386,52 +387,51 @@ class RpcBase:
                 rpc_id=None, code=INVALID_REQUEST, message=message
             )
             return result, False
-        response = None
-        if isinstance(data, dict) and "response" in data:
-            response = data["response"]
-            if response is not None:
-                logger.debug(f"Received RPC response: {response}")
-                return response, True
-        if isinstance(data, dict) and "request" in data:
-            request = data["request"]
-            if request is not None:
-                logger.debug(f"Received RPC request: {request}")
-        result = None
-        is_notification: bool = None
-        rpc_id = request.get("id") or request.get("call_id")
-        method_name = request.get("method")
-        logger.debug(logs.CALL_INTERCEPTED, request)
-        if isinstance(request, dict):
-            is_notification = method_name is not None and rpc_id is None
-            if rpc_id:
-                logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
-            else:
-                logger.info(logs.RPC_NOTIFICATION_START, method_name)
-            try:
-                result = self.process_call(request, is_notification=is_notification)
-            except JsonRpcError as e:
-                result = e.as_dict()
-            except Exception as e:
-                logger.debug("Application error: %s", e)
-                exception_data = e.args[0] if len(e.args) == 1 else e.args
-                result = generate_error_response(
-                    rpc_id=rpc_id,
-                    code=GENERIC_APPLICATION_ERROR,
-                    message=str(e),
-                    data=exception_data,
-                )
-        # elif isinstance(data, list):
-        #     # TODO: implement batch calls
-        #     invalid_call_data = [x for x in data if not isinstance(x, dict)]
-        #     if invalid_call_data:
-        #         message = RPC_ERRORS[INVALID_REQUEST]
-        #         result = generate_error_response(
-        #             rpc_id=None, code=INVALID_REQUEST, message=message
-        #         )
+
+        if not isinstance(data, dict):
+            logger.warning(f"Invalid message type: {type(data).__name__}")
+            message = RPC_ERRORS[INVALID_REQUEST]
+            result = generate_error_response(
+                rpc_id=None, code=INVALID_REQUEST, message=message
+            )
+            return result, False
+
+        # Check if this is a JSON-RPC 2.0 response
+        if "result" in data or "error" in data:
+            logger.debug(f"Received JSON-RPC 2.0 response: {data}")
+            return data, True
+
+        # Must be a JSON-RPC 2.0 request (or attempt)
+        rpc_id = data.get("id")
+        method_name = data.get("method")
+        is_notification = rpc_id is None
+
+        logger.debug(logs.CALL_INTERCEPTED, data)
+
+        if rpc_id:
+            logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
+        else:
+            logger.info(logs.RPC_NOTIFICATION_START, method_name)
+
+        try:
+            result = self.process_call(data, is_notification=is_notification)
+        except JsonRpcError as e:
+            result = e.as_dict()
+        except Exception as e:
+            logger.debug("Application error: %s", e)
+            exception_data = e.args[0] if len(e.args) == 1 else e.args
+            result = generate_error_response(
+                rpc_id=rpc_id,
+                code=GENERIC_APPLICATION_ERROR,
+                message=str(e),
+                data=exception_data,
+            )
+
         if rpc_id:
             logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
         else:
             logger.debug(logs.RPC_NOTIFICATION_END, method_name)
+
         return result, is_notification
 
     def execute_called_method(self, method: Callable, params: list | dict) -> Any:

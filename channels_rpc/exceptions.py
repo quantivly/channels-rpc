@@ -1,8 +1,9 @@
 """Exceptions for the channels-rpc package."""
+
 import json
 from typing import Any
 
-# Removed unused import
+from channels_rpc.utils import create_json_rpc_error_response
 
 PARSE_ERROR: int = -32700
 INVALID_REQUEST: int = -32600
@@ -43,8 +44,6 @@ def generate_error_response(
     dict[str, Any]
         Error response.
     """
-    from channels_rpc.utils import create_json_rpc_error_response
-
     return create_json_rpc_error_response(
         rpc_id=rpc_id, code=code, message=message, data=data
     )
@@ -87,12 +86,18 @@ class JsonRpcError(Exception):
                     message = f"{message}: '{method}'"
             elif self.code == INVALID_REQUEST and isinstance(self.data, dict):
                 if "version" in self.data:
-                    message = f"{message}: Invalid JSON-RPC version '{self.data['version']}', expected '2.0'"
+                    version = self.data["version"]
+                    message = (
+                        f"{message}: Invalid JSON-RPC version '{version}', "
+                        "expected '2.0'"
+                    )
                 elif "field" in self.data:
                     message = f"{message}: {self.data['field']}"
             elif self.code == INVALID_PARAMS and isinstance(self.data, dict):
                 if "expected" in self.data and "actual" in self.data:
-                    message = f"{message}: Expected {self.data['expected']}, got {self.data['actual']}"
+                    expected = self.data["expected"]
+                    actual = self.data["actual"]
+                    message = f"{message}: Expected {expected}, got {actual}"
 
         return generate_error_response(
             rpc_id=self.rpc_id, code=self.code, message=message, data=self.data
