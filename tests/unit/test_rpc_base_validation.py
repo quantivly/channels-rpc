@@ -11,6 +11,8 @@ These tests are CRITICAL as they cover:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from channels_rpc.exceptions import JsonRpcError, JsonRpcErrorCode
@@ -177,14 +179,14 @@ class TestGetParams:
 
     def test_get_params_with_empty_dict(self, mock_rpc_consumer):
         """Should accept empty dict params."""
-        data = {"params": {}}
+        data: dict[str, Any] = {"params": {}}
         result = mock_rpc_consumer.get_params(data)
 
         assert result == {}
 
     def test_get_params_with_empty_list(self, mock_rpc_consumer):
         """Should preserve empty list (bug fix for falsy value handling)."""
-        data = {"params": []}
+        data: dict[str, Any] = {"params": []}
         result = mock_rpc_consumer.get_params(data)
 
         # Bug fix: empty list should be preserved, not converted to {}

@@ -31,6 +31,15 @@ repos:
       - id: isort
         args: ['--profile', 'black', '--filter-files']
 
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - django-stubs
+          - types-requests
+        args: [--strict-equality, --warn-redundant-casts, --warn-unused-ignores]
+
 # sets up .pre-commit-ci.yaml to ensure pre-commit dependencies stay up to date
 ci:
   autoupdate_schedule: weekly

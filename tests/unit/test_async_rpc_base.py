@@ -138,7 +138,7 @@ class TestAsyncProcessCall:
         """Should handle async methods with no params."""
 
         # Add a method without params
-        class TestConsumer(async_consumer_with_methods.__class__):
+        class TestConsumer(type(async_consumer_with_methods)):  # type: ignore[misc]
             pass
 
         @TestConsumer.rpc_method()
@@ -159,7 +159,7 @@ class TestAsyncProcessCall:
         """Should log warning when notification returns result."""
 
         # Create a notification that returns a value (bad practice)
-        class TestConsumer(async_consumer_with_methods.__class__):
+        class TestConsumer(type(async_consumer_with_methods)):  # type: ignore[misc]
             pass
 
         @TestConsumer.rpc_notification()
@@ -502,6 +502,7 @@ class TestAsyncProcessingEdgeCases:
 
         result = await consumer.process_call(data, is_notification=False)
 
+        assert result is not None
         assert result["result"] is False
 
     @pytest.mark.asyncio
@@ -521,6 +522,7 @@ class TestAsyncProcessingEdgeCases:
 
         result = await consumer.process_call(data, is_notification=False)
 
+        assert result is not None
         assert result["result"] == 0
 
     @pytest.mark.asyncio

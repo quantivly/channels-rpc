@@ -330,31 +330,31 @@ class TestErrorCodeConstants:
 
     def test_parse_error_code(self):
         """JsonRpcErrorCode.PARSE_ERROR should be -32700."""
-        assert JsonRpcErrorCode.PARSE_ERROR == -32700
+        assert JsonRpcErrorCode.PARSE_ERROR.value == -32700
 
     def test_invalid_request_code(self):
         """JsonRpcErrorCode.INVALID_REQUEST should be -32600."""
-        assert JsonRpcErrorCode.INVALID_REQUEST == -32600
+        assert JsonRpcErrorCode.INVALID_REQUEST.value == -32600
 
     def test_method_not_found_code(self):
         """JsonRpcErrorCode.METHOD_NOT_FOUND should be -32601."""
-        assert JsonRpcErrorCode.METHOD_NOT_FOUND == -32601
+        assert JsonRpcErrorCode.METHOD_NOT_FOUND.value == -32601
 
     def test_invalid_params_code(self):
         """JsonRpcErrorCode.INVALID_PARAMS should be -32602."""
-        assert JsonRpcErrorCode.INVALID_PARAMS == -32602
+        assert JsonRpcErrorCode.INVALID_PARAMS.value == -32602
 
     def test_internal_error_code(self):
         """JsonRpcErrorCode.INTERNAL_ERROR should be -32603."""
-        assert JsonRpcErrorCode.INTERNAL_ERROR == -32603
+        assert JsonRpcErrorCode.INTERNAL_ERROR.value == -32603
 
     def test_generic_application_error_code(self):
         """JsonRpcErrorCode.GENERIC_APPLICATION_ERROR should be -32000."""
-        assert JsonRpcErrorCode.GENERIC_APPLICATION_ERROR == -32000
+        assert JsonRpcErrorCode.GENERIC_APPLICATION_ERROR.value == -32000
 
     def test_parse_result_error_code(self):
         """JsonRpcErrorCode.PARSE_RESULT_ERROR should be -32701."""
-        assert JsonRpcErrorCode.PARSE_RESULT_ERROR == -32701
+        assert JsonRpcErrorCode.PARSE_RESULT_ERROR.value == -32701
 
     def test_all_codes_in_rpc_errors_dict(self):
         """All error codes should be in RPC_ERRORS dictionary."""

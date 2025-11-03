@@ -102,11 +102,11 @@ class MockRpcConsumer(RpcBase):
         self.scope = scope or {"type": "websocket"}
         self.sent_messages = []
 
-    def send_json(self, data):
+    def send_json(self, data):  # type: ignore[override]
         """Mock send_json to capture sent messages."""
         self.sent_messages.append(data)
 
-    def send(self, data):
+    def send(self, data):  # type: ignore[override]
         """Mock send for text messages."""
         self.sent_messages.append(data)
 
@@ -124,11 +124,11 @@ class MockAsyncRpcConsumer(AsyncRpcBase):
         self.scope = scope or {"type": "websocket"}
         self.sent_messages = []
 
-    async def send_json(self, data):
+    async def send_json(self, data):  # type: ignore[override]
         """Mock send_json to capture sent messages."""
         self.sent_messages.append(data)
 
-    async def send(self, data):
+    async def send(self, data):  # type: ignore[override]
         """Mock send for text messages."""
         self.sent_messages.append(data)
 

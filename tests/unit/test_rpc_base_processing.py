@@ -441,6 +441,7 @@ class TestProcessingEdgeCases:
 
         result = consumer.process_call(data, is_notification=False)
 
+        assert result is not None
         assert result["result"] is False
 
     def test_process_call_with_method_returning_zero(self):
@@ -459,4 +460,5 @@ class TestProcessingEdgeCases:
 
         result = consumer.process_call(data, is_notification=False)
 
+        assert result is not None
         assert result["result"] == 0

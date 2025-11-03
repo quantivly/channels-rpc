@@ -266,7 +266,7 @@ class TestCreateJsonRpcFrameDeprecated:
         """Should create error response when error provided."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
-            error = {"code": -32600, "message": "Invalid"}
+            error: dict[str, int | str] = {"code": -32600, "message": "Invalid"}
             result = create_json_rpc_frame(rpc_id=3, result="ignored", error=error)
 
         assert result["jsonrpc"] == "2.0"
@@ -300,7 +300,7 @@ class TestCreateJsonRpcFrameDeprecated:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             # Error dict missing message
-            error = {"code": -32000}
+            error: dict[str, int | str] = {"code": -32000}
             result = create_json_rpc_frame(rpc_id=6, result="test", error=error)
 
         assert result["error"]["code"] == -32000
@@ -310,7 +310,7 @@ class TestCreateJsonRpcFrameDeprecated:
         """Should use default error code when not provided."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
-            error = {"message": "Custom error"}
+            error: dict[str, int | str] = {"message": "Custom error"}
             result = create_json_rpc_frame(rpc_id=7, result="test", error=error)
 
         assert result["error"]["code"] == -32603  # default INTERNAL_ERROR
