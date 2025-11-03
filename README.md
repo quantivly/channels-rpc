@@ -1,12 +1,12 @@
 # channels-rpc
 
-`channels-rpc`` is aimed to enable [JSON-RPC](http://json-rpc.org/) functionnality
-on top of the excellent django channels project and especially their Websockets
+`channels-rpc` is aimed to enable [JSON-RPC](http://json-rpc.org/) functionality
+on top of the excellent django channels project and especially their WebSockets
 functionality. It is aimed to be:
 
 - Fully integrated with Channels
-- Fully implement JSON-RPC 1 and 2 protocol
-- Support both WebSocket and HTTP transports
+- Fully implement JSON-RPC 2.0 protocol
+- WebSocket transport support (HTTP transport removed in 1.0.0)
 - Easy integration
 
 ## Installation
@@ -131,3 +131,24 @@ def ping(**kwargs):
 
 The JsonRpcConsumer class can be tested the same way Channels Consumers are tested.
 See [here](http://channels.readthedocs.io/en/stable/testing.html)
+
+## Breaking Changes in 1.0.0
+
+### HTTP Transport Removed
+
+The HTTP transport (AsyncRpcHttpConsumer) has been removed in version 1.0.0. This library now focuses exclusively on WebSocket transport, which is the primary use case for JSON-RPC in Django Channels applications.
+
+**What was removed:**
+- `AsyncRpcHttpConsumer` class
+- `RPC_ERROR_TO_HTTP_CODE` mapping
+
+**Migration guide:**
+- Replace any usage of `AsyncRpcHttpConsumer` with `AsyncJsonRpcWebsocketConsumer`
+- Update your routing configuration to use WebSocket endpoints
+- The `http` parameter in `@rpc_method()` and `@rpc_notification()` decorators is now deprecated but kept for backward compatibility (it will be ignored)
+
+**Why this change:**
+- QSpace server (the only known downstream consumer) exclusively uses WebSocket transport
+- HTTP consumer had low test coverage (18.75%) and known issues
+- Simplifies the codebase and reduces maintenance burden
+- Aligns with the primary use case of real-time bidirectional communication

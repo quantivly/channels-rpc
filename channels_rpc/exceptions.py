@@ -12,6 +12,7 @@ INVALID_PARAMS: int = -32602
 INTERNAL_ERROR: int = -32603
 GENERIC_APPLICATION_ERROR: int = -32000
 PARSE_RESULT_ERROR: int = -32701
+REQUEST_TOO_LARGE: int = -32001  # Server-defined error code
 RPC_ERRORS: dict[int, str] = {
     PARSE_ERROR: "Parse Error",
     INVALID_REQUEST: "Invalid Request",
@@ -20,6 +21,7 @@ RPC_ERRORS: dict[int, str] = {
     INTERNAL_ERROR: "Internal Error",
     GENERIC_APPLICATION_ERROR: "Application Error",
     PARSE_RESULT_ERROR: "Error while parsing result",
+    REQUEST_TOO_LARGE: "Request Too Large",
 }
 
 
@@ -52,13 +54,13 @@ def generate_error_response(
 class JsonRpcError(Exception):
     """General JSON-RPC exception class."""
 
-    def __init__(self, rpc_id: int, code: int, data: Any = None):
+    def __init__(self, rpc_id: str | int | None, code: int, data: Any = None):
         """Initialize a new :class:`JsonRpcError` instance.
 
         Parameters
         ----------
-        rpc_id : int
-            Call ID.
+        rpc_id : str | int | None
+            Call ID. Can be a string, integer, or None for requests without an ID.
         code : int
             RPC error code.
         data : Any, optional
@@ -98,6 +100,10 @@ class JsonRpcError(Exception):
                     expected = self.data["expected"]
                     actual = self.data["actual"]
                     message = f"{message}: Expected {expected}, got {actual}"
+            elif self.code == REQUEST_TOO_LARGE and isinstance(self.data, dict):
+                limit_type = self.data.get("limit_type", "unknown")
+                limit = self.data.get("limit", "unknown")
+                message = f"{message}: {limit_type} exceeds limit of {limit}"
 
         return generate_error_response(
             rpc_id=self.rpc_id, code=self.code, message=message, data=self.data
@@ -112,3 +118,25 @@ class JsonRpcError(Exception):
             Error response.
         """
         return json.dumps(self.as_dict())
+
+
+class RequestTooLargeError(JsonRpcError):
+    """Exception for requests exceeding size limits."""
+
+    def __init__(self, rpc_id: str | int | None, limit_type: str, limit_value: int):
+        """Initialize RequestTooLargeError.
+
+        Parameters
+        ----------
+        rpc_id : str | int | None
+            Request ID.
+        limit_type : str
+            Type of limit exceeded (e.g., "message_size", "array_length").
+        limit_value : int
+            The limit that was exceeded.
+        """
+        super().__init__(
+            rpc_id=rpc_id,
+            code=REQUEST_TOO_LARGE,
+            data={"limit_type": limit_type, "limit": limit_value},
+        )

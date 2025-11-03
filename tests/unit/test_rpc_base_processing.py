@@ -1,6 +1,7 @@
 """Tests for RPC processing logic in rpc_base.py.
 
-Coverage: process_call(), intercept_call(), execute_called_method(), _base_receive_json().
+Coverage: process_call(), intercept_call(), execute_called_method(),
+_base_receive_json().
 Target: 40-50 tests, 100% coverage of processing logic.
 
 CRITICAL TESTS - Cover recent bug fixes:
@@ -18,7 +19,6 @@ from channels_rpc.exceptions import (
     GENERIC_APPLICATION_ERROR,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
-    JsonRpcError,
 )
 from channels_rpc.rpc_base import RpcBase
 
@@ -209,7 +209,10 @@ class TestInterceptCall:
         assert is_notification is False
 
     def test_intercept_call_catches_generic_exception(self):
-        """Should convert generic exceptions to GENERIC_APPLICATION_ERROR."""
+        """Should convert generic exceptions to GENERIC_APPLICATION_ERROR.
+
+        Security: should not leak internal details.
+        """
 
         class FailingConsumer(RpcBase):
             def __init__(self):
@@ -227,18 +230,22 @@ class TestInterceptCall:
 
         assert "error" in result
         assert result["error"]["code"] == GENERIC_APPLICATION_ERROR
-        assert "Something went wrong" in result["error"]["message"]
+        # Security fix: error message should not leak internal details
+        assert result["error"]["message"] == "Application error occurred"
+        assert "data" not in result["error"] or result["error"]["data"] is None
         assert result["id"] == 1
         assert is_notification is False
 
     def test_intercept_call_rpc_id_in_error_for_invalid_request(
         self, consumer_with_methods
     ):
-        """Should include rpc_id in error even for invalid requests (REGRESSION TEST)."""
-        # This tests the bug fix from commit 317f958
+        """Should include rpc_id in error for invalid requests.
+
+        REGRESSION TEST for commit 317f958.
+        """
         data = {"jsonrpc": "1.0", "method": "test", "id": 42}
 
-        result, is_notification = consumer_with_methods.intercept_call(data)
+        result, _ = consumer_with_methods.intercept_call(data)
 
         assert result["id"] == 42
         assert result["error"]["code"] == INVALID_REQUEST
@@ -285,7 +292,7 @@ class TestInterceptCall:
         assert is_notification is False
 
     def test_intercept_call_exception_with_args(self):
-        """Should include exception args in error data."""
+        """Should not leak exception args in error data (security fix)."""
 
         class FailingConsumer(RpcBase):
             def __init__(self):
@@ -301,10 +308,12 @@ class TestInterceptCall:
 
         result, _ = consumer.intercept_call(data)
 
-        assert result["error"]["data"] == "Error message"
+        # Security fix: exception details should not be leaked
+        # data field is not included when None
+        assert "data" not in result["error"] or result["error"]["data"] is None
 
     def test_intercept_call_exception_with_multiple_args(self):
-        """Should include all exception args when multiple."""
+        """Should not leak exception args even with multiple (security fix)."""
 
         class FailingConsumer(RpcBase):
             def __init__(self):
@@ -320,7 +329,9 @@ class TestInterceptCall:
 
         result, _ = consumer.intercept_call(data)
 
-        assert result["error"]["data"] == ("Error", 123, {"key": "value"})
+        # Security fix: exception details should not be leaked
+        # data field is not included when None
+        assert "data" not in result["error"] or result["error"]["data"] is None
 
 
 @pytest.mark.unit

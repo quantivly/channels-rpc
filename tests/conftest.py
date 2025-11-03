@@ -11,11 +11,11 @@ import django
 
 django.setup()
 
-import pytest
-from channels.testing import WebsocketCommunicator
+import pytest  # noqa: E402
+from channels.testing import WebsocketCommunicator  # noqa: E402
 
-from channels_rpc.async_rpc_base import AsyncRpcBase
-from channels_rpc.exceptions import (
+from channels_rpc.async_rpc_base import AsyncRpcBase  # noqa: E402
+from channels_rpc.exceptions import (  # noqa: E402
     GENERIC_APPLICATION_ERROR,
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -23,7 +23,7 @@ from channels_rpc.exceptions import (
     METHOD_NOT_FOUND,
     PARSE_ERROR,
 )
-from channels_rpc.rpc_base import RpcBase
+from channels_rpc.rpc_base import RpcBase  # noqa: E402
 
 # ============================================================================
 # Error Code Fixtures
@@ -119,7 +119,7 @@ class MockRpcConsumer(RpcBase):
 
     def encode_json(self, data):
         """Mock JSON encoding."""
-        import json
+        import json  # noqa: PLC0415
 
         return json.dumps(data)
 
@@ -141,7 +141,7 @@ class MockAsyncRpcConsumer(AsyncRpcBase):
 
     def encode_json(self, data):
         """Mock JSON encoding."""
-        import json
+        import json  # noqa: PLC0415
 
         return json.dumps(data)
 

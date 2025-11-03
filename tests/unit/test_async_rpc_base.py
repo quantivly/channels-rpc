@@ -1,6 +1,7 @@
 """Tests for async RPC processing logic in async_rpc_base.py.
 
-Coverage: async execute_called_method(), process_call(), intercept_call(), _base_receive_json().
+Coverage: async execute_called_method(), process_call(), intercept_call(),
+_base_receive_json().
 Target: 40-50 tests, 90%+ coverage of async processing logic.
 
 CRITICAL TESTS - Async variants of core RPC functionality:
@@ -20,7 +21,6 @@ from channels_rpc.exceptions import (
     GENERIC_APPLICATION_ERROR,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
-    JsonRpcError,
 )
 
 
@@ -181,7 +181,10 @@ class TestAsyncProcessCall:
 
 @pytest.mark.unit
 class TestAsyncInterceptCall:
-    """Test async intercept_call() - async request/response routing and error handling."""
+    """Test async intercept_call().
+
+    Covers async request/response routing and error handling.
+    """
 
     @pytest.mark.asyncio
     async def test_intercept_call_with_valid_request(self, async_consumer_with_methods):
@@ -291,7 +294,10 @@ class TestAsyncInterceptCall:
 
     @pytest.mark.asyncio
     async def test_intercept_call_catches_generic_exception(self):
-        """Should convert generic exceptions to GENERIC_APPLICATION_ERROR."""
+        """Should convert generic exceptions to GENERIC_APPLICATION_ERROR.
+
+        Security: should not leak internal details.
+        """
 
         class FailingAsyncConsumer(AsyncRpcBase):
             def __init__(self):
@@ -309,7 +315,9 @@ class TestAsyncInterceptCall:
 
         assert "error" in result
         assert result["error"]["code"] == GENERIC_APPLICATION_ERROR
-        assert "Something went wrong" in result["error"]["message"]
+        # Security fix: error message should not leak internal details
+        assert result["error"]["message"] == "Application error occurred"
+        assert "data" not in result["error"] or result["error"]["data"] is None
         assert result["id"] == 1
         assert is_notification is False
 
@@ -346,7 +354,7 @@ class TestAsyncInterceptCall:
 
     @pytest.mark.asyncio
     async def test_intercept_call_exception_with_args(self):
-        """Should include exception args in error data."""
+        """Should not leak exception args in error data (security fix)."""
 
         class FailingAsyncConsumer(AsyncRpcBase):
             def __init__(self):
@@ -362,11 +370,13 @@ class TestAsyncInterceptCall:
 
         result, _ = await consumer.intercept_call(data)
 
-        assert result["error"]["data"] == "Error message"
+        # Security fix: exception details should not be leaked
+        # data field is not included when None
+        assert "data" not in result["error"] or result["error"]["data"] is None
 
     @pytest.mark.asyncio
     async def test_intercept_call_exception_with_multiple_args(self):
-        """Should include all exception args when multiple."""
+        """Should not leak exception args even with multiple (security fix)."""
 
         class FailingAsyncConsumer(AsyncRpcBase):
             def __init__(self):
@@ -382,12 +392,17 @@ class TestAsyncInterceptCall:
 
         result, _ = await consumer.intercept_call(data)
 
-        assert result["error"]["data"] == ("Error", 123, {"key": "value"})
+        # Security fix: exception details should not be leaked
+        # data field is not included when None
+        assert "data" not in result["error"] or result["error"]["data"] is None
 
 
 @pytest.mark.unit
 class TestAsyncBaseReceiveJson:
-    """Test async _base_receive_json() - async message reception and response handling."""
+    """Test async _base_receive_json().
+
+    Covers async message reception and response handling.
+    """
 
     @pytest.mark.asyncio
     async def test_base_receive_json_sends_response_for_method(

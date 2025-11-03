@@ -13,13 +13,11 @@ CRITICAL TESTS - End-to-end WebSocket RPC functionality:
 
 from __future__ import annotations
 
-import json
-
 import pytest
 from channels.testing import WebsocketCommunicator
 
 from channels_rpc import AsyncJsonRpcWebsocketConsumer, JsonRpcWebsocketConsumer
-from channels_rpc.exceptions import PARSE_ERROR, PARSE_RESULT_ERROR
+from channels_rpc.exceptions import PARSE_ERROR
 
 # ============================================================================
 # Sync WebSocket Consumer Tests
@@ -94,7 +92,7 @@ class TestSyncJsonRpcWebsocketConsumer:
 
         # Should not receive any response (notification)
         # Wait a moment to ensure no response is sent
-        import asyncio
+        import asyncio  # noqa: PLC0415
 
         try:
             await asyncio.wait_for(communicator.receive_json_from(), timeout=0.1)
@@ -345,7 +343,7 @@ class TestAsyncJsonRpcWebsocketConsumer:
         )
 
         # Should not receive any response
-        import asyncio
+        import asyncio  # noqa: PLC0415
 
         try:
             await asyncio.wait_for(communicator.receive_json_from(), timeout=0.1)
@@ -455,7 +453,7 @@ class TestAsyncJsonRpcWebsocketConsumer:
 
         # The connection should close or raise an error
         # AsyncJsonRpcWebsocketConsumer doesn't override decode_json like sync version
-        import asyncio
+        import asyncio  # noqa: PLC0415
 
         with pytest.raises((asyncio.TimeoutError, Exception)):
             # Expect no response or connection closure
@@ -464,7 +462,7 @@ class TestAsyncJsonRpcWebsocketConsumer:
         # Try to disconnect gracefully
         try:
             await communicator.disconnect()
-        except Exception:
+        except Exception:  # noqa: S110
             pass  # Connection may already be closed
 
     @pytest.mark.asyncio
@@ -576,7 +574,8 @@ class TestWebSocketConsumerFeatures:
         assert isinstance(response, dict)
         assert response["jsonrpc"] == "2.0"
         assert response["id"] == 1
-        # Result may or may not be in response depending on deprecated frame implementation
+        # Result may or may not be in response depending on
+        # deprecated frame implementation
         if "result" in response:
             assert response["result"] is None
 
@@ -608,7 +607,7 @@ class TestWebSocketConsumerFeatures:
 
     @pytest.mark.asyncio
     async def test_method_exception_handling_sync(self):
-        """Should handle exceptions in sync methods."""
+        """Should handle exceptions in sync methods without leaking details."""
 
         class TestConsumer(JsonRpcWebsocketConsumer):
             pass
@@ -629,13 +628,15 @@ class TestWebSocketConsumerFeatures:
 
         assert "error" in response
         assert response["error"]["code"] == -32000  # GENERIC_APPLICATION_ERROR
-        assert "Test error" in response["error"]["message"]
+        # Security fix: error details should not be leaked
+        assert response["error"]["message"] == "Application error occurred"
+        assert "data" not in response["error"] or response["error"]["data"] is None
 
         await communicator.disconnect()
 
     @pytest.mark.asyncio
     async def test_method_exception_handling_async(self):
-        """Should handle exceptions in async methods."""
+        """Should handle exceptions in async methods without leaking details."""
 
         class TestAsyncConsumer(AsyncJsonRpcWebsocketConsumer):
             pass
@@ -656,6 +657,8 @@ class TestWebSocketConsumerFeatures:
 
         assert "error" in response
         assert response["error"]["code"] == -32000
-        assert "Async error" in response["error"]["message"]
+        # Security fix: error details should not be leaked
+        assert response["error"]["message"] == "Application error occurred"
+        assert "data" not in response["error"] or response["error"]["data"] is None
 
         await communicator.disconnect()

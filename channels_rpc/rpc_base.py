@@ -12,12 +12,14 @@ References
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass
 from inspect import getfullargspec
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from channels_rpc import logs
 from channels_rpc.exceptions import (
@@ -26,14 +28,53 @@ from channels_rpc.exceptions import (
     INVALID_PARAMS,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
-    PARSE_ERROR,
     RPC_ERRORS,
     JsonRpcError,
     generate_error_response,
 )
-from channels_rpc.utils import create_json_rpc_frame
+from channels_rpc.utils import (
+    create_json_rpc_request,
+    create_json_rpc_response,
+)
 
 logger = logging.getLogger("django.channels.rpc")
+
+
+@dataclass
+class RpcMethodWrapper:
+    """Wrapper for RPC method with transport options.
+
+    Attributes
+    ----------
+    func : Callable
+        The actual RPC method function.
+    options : dict[str, bool]
+        Transport options (websocket, http).
+    name : str
+        Method name to register.
+    """
+
+    func: Callable[..., Any]
+    options: dict[str, bool]
+    name: str
+
+    def __post_init__(self) -> None:
+        """Initialize wrapper attributes after dataclass init."""
+        # Set __name__ and __qualname__ to mimic the wrapped function
+        object.__setattr__(self, "__name__", getattr(self.func, "__name__", self.name))
+        object.__setattr__(
+            self, "__qualname__", getattr(self.func, "__qualname__", self.name)
+        )
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Make the wrapper callable."""
+        return self.func(*args, **kwargs)
+
+    def __get__(self, obj: Any, objtype: Any = None) -> Callable[..., Any]:
+        """Support instance method binding."""
+        if obj is None:
+            return self
+        return functools.partial(self.__call__, obj)
 
 
 class RpcBase:
@@ -42,6 +83,10 @@ class RpcBase:
     Variant of WebsocketConsumer that automatically JSON-encodes and decodes
     messages as they come in and go out. Expects everything to be text; will
     error on binary data.
+
+    This class should be mixed with a Django Channels consumer class that
+    provides the required methods (send_json, send, encode_json) and attributes
+    (scope). See ChannelsConsumerProtocol for the expected interface.
 
     Errors:
 
@@ -75,14 +120,29 @@ class RpcBase:
     - http://groups.google.com/group/json-rpc/web/json-rpc-2-0
     """
 
-    RPC_ERROR_TO_HTTP_CODE: dict[int, int] = {
-        PARSE_ERROR: 500,
-        INVALID_REQUEST: 400,
-        METHOD_NOT_FOUND: 404,
-        INVALID_PARAMS: 500,
-        INTERNAL_ERROR: 500,
-        GENERIC_APPLICATION_ERROR: 500,
-    }
+    if TYPE_CHECKING:
+        # Type hints for methods provided by Channels consumer mixin
+        # These are defined in ChannelsConsumerProtocol
+        scope: dict[str, Any]
+
+        def send_json(
+            self, content: dict[str, Any], close: bool = False  # noqa: FBT001, FBT002
+        ) -> None:
+            """Send JSON data to the client."""
+            ...
+
+        def send(
+            self,
+            text_data: str | None = None,
+            bytes_data: bytes | None = None,
+            close: bool = False,  # noqa: FBT001, FBT002
+        ) -> None:
+            """Send text or binary data to the client."""
+            ...
+
+        def encode_json(self, content: dict[str, Any]) -> str:
+            """Encode a dict as JSON."""
+            ...
 
     rpc_methods: defaultdict = defaultdict(dict)
     rpc_notifications: defaultdict = defaultdict(dict)
@@ -104,19 +164,32 @@ class RpcBase:
         websocket : bool, optional
             Whether WebSocket transport can use this function, by default True.
         http : bool, optional
-            Whether HTTP transport can use this function, by default True.
+            DEPRECATED: HTTP transport removed in 1.0.0. Parameter ignored.
 
         Returns
         -------
         Callable
             Decorated function.
         """
+        import warnings  # noqa: PLC0415
 
-        def wrap(method: Callable) -> Callable:
+        if not http:
+            warnings.warn(
+                "The 'http' parameter is deprecated and ignored. "
+                "HTTP transport was removed in version 1.0.0.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        def wrap(method: Callable) -> RpcMethodWrapper:
             name = method_name or method.__name__
-            method.options = {"websocket": websocket, "http": http}
-            cls.rpc_methods[id(cls)][name] = method
-            return method
+            wrapper = RpcMethodWrapper(
+                func=method,
+                options={"websocket": websocket, "http": http},
+                name=name,
+            )
+            cls.rpc_methods[id(cls)][name] = wrapper
+            return wrapper
 
         return wrap
 
@@ -151,19 +224,32 @@ class RpcBase:
         websocket : bool, optional
             Whether WebSocket transport can use this function, by default True.
         http : bool, optional
-            Whether HTTP transport can use this function, by default True.
+            DEPRECATED: HTTP transport removed in 1.0.0. Parameter ignored.
 
         Returns
         -------
         Callable
             Decorated function.
         """
+        import warnings  # noqa: PLC0415
 
-        def wrap(method: Callable) -> Callable:
+        if not http:
+            warnings.warn(
+                "The 'http' parameter is deprecated and ignored. "
+                "HTTP transport was removed in version 1.0.0.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        def wrap(method: Callable) -> RpcMethodWrapper:
             name = notification_name or method.__name__
-            method.options = {"websocket": websocket, "http": http}
-            cls.rpc_notifications[id(cls)][name] = method
-            return method
+            wrapper = RpcMethodWrapper(
+                func=method,
+                options={"websocket": websocket, "http": http},
+                name=name,
+            )
+            cls.rpc_notifications[id(cls)][name] = wrapper
+            return wrapper
 
         return wrap
 
@@ -181,6 +267,33 @@ class RpcBase:
         except KeyError:
             return []
 
+    def validate_scope(self) -> None:
+        """Validate and sanitize scope data.
+
+        Ensures scope contains required fields and has expected types.
+        Should be called during connection establishment.
+
+        Raises
+        ------
+        ValueError
+            If scope is invalid or missing required fields.
+        """
+        if not isinstance(self.scope, dict):
+            error_msg = "Scope must be a dict"
+            raise ValueError(error_msg)
+
+        # Validate type
+        scope_type = self.scope.get("type")
+        if scope_type not in ("websocket", "websocket.receive", "websocket.disconnect"):
+            logger.warning("Unexpected scope type: %s", scope_type)
+
+        # Validate client if present
+        if "client" in self.scope:
+            client = self.scope["client"]
+            # Client tuple should be (host, port)
+            if not isinstance(client, (list, tuple)) or len(client) != 2:
+                logger.warning("Malformed client in scope: %s", client)
+
     def notify_channel(self, method: str, params: dict[str, Any]) -> None:
         """Notify a channel.
 
@@ -191,7 +304,8 @@ class RpcBase:
         params : dict[str, Any]
             Method parameters.
         """
-        content = create_json_rpc_frame(method=method, params=params)
+        # Create a JSON-RPC 2.0 notification (request without id)
+        content = create_json_rpc_request(rpc_id=None, method=method, params=params)
         self.send(self.encode_json(content))
 
     def validate_call(self, data: dict[str, Any]) -> None:
@@ -234,6 +348,12 @@ class RpcBase:
                 INVALID_REQUEST,
                 data={"field": f"'method' must be a string, got {method_type}"},
             )
+
+        # Check size limits
+        from channels_rpc.limits import check_size_limits  # noqa: PLC0415
+
+        check_size_limits(data, rpc_id)
+
         logger.debug("Call data is valid")
 
     def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
@@ -271,23 +391,30 @@ class RpcBase:
                 rpc_id, METHOD_NOT_FOUND, data={"method": method_name}
             ) from e
         protocol = self.scope["type"]
-        if not method.options[protocol]:
-            raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
-        logger.debug("Method found: %s", method.__name__)
+        # Handle both RpcMethodWrapper and raw Callable (backward compatibility)
+        if isinstance(method, RpcMethodWrapper):
+            if not method.options[protocol]:
+                raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
+            logger.debug("Method found: %s", method.func.__name__)
+        else:
+            # Legacy raw callable with options attribute
+            if not getattr(method, "options", {}).get(protocol, True):
+                raise JsonRpcError(rpc_id, METHOD_NOT_FOUND)
+            logger.debug("Method found: %s", method.__name__)
         return method
 
     def get_params(self, data: dict[str, Any]) -> dict | list:
-        """Get the parameters to pass to the method.
+        """Get RPC call parameters from request data.
 
         Parameters
         ----------
         data : dict[str, Any]
-            Remote procedure call data.
+            Request data.
 
         Returns
         -------
         dict | list
-            Parameters to pass to the method.
+            Parameters, or empty dict if not provided.
 
         Raises
         ------
@@ -295,8 +422,21 @@ class RpcBase:
             Invalid call data provided.
         """
         logger.debug("Getting call parameters: %s", data)
-        params = data.get("params") or data.get("arguments") or {}
-        if not isinstance(params, list | dict):
+
+        # Check for params first (standard), then arguments (deprecated)
+        if "params" in data:
+            params = data["params"]
+        elif "arguments" in data:
+            params = data["arguments"]
+        else:
+            params = {}
+
+        # None is treated as empty dict
+        if params is None:
+            return {}
+
+        # Validate type
+        if not isinstance(params, (list, dict)):
             rpc_id = data.get("id")
             raise JsonRpcError(
                 rpc_id,
@@ -306,6 +446,7 @@ class RpcBase:
                     "actual": type(params).__name__,
                 },
             )
+
         logger.debug("Call parameters found: %s", params)
         return params
 
@@ -330,7 +471,7 @@ class RpcBase:
 
     def process_call(
         self, data: dict[str, Any], *, is_notification: bool = False
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """Process the received remote procedure call data.
 
         Parameters
@@ -342,24 +483,23 @@ class RpcBase:
 
         Returns
         -------
-        dict | None
+        dict[str, Any] | None
             Result of the remote procedure call.
         """
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
-        rpc_id, rpc_id_key = self.get_rpc_id(data)
+        rpc_id, _ = self.get_rpc_id(data)
         logger.debug(f"Executing {method.__qualname__}({json.dumps(params)})")
         result = self.execute_called_method(method, params)
         if not is_notification:
             logger.debug("Execution result: %s", result)
-            result = create_json_rpc_frame(
-                result=result,
+            # Return standard JSON-RPC 2.0 response
+            response = create_json_rpc_response(
                 rpc_id=rpc_id,
-                rpc_id_key=rpc_id_key,
-                method=data["method"],
-                params=params,
+                result=result,
                 compressed=False,
             )
+            return response
         elif result is not None:
             logger.warning("The notification method shouldn't return any result")
             logger.warning(f"method: {method.__qualname__}, params: {params}")
@@ -380,6 +520,9 @@ class RpcBase:
             Result and whether it's a notification.
         """
         logger.debug("Intercepting call: %s", data)
+
+        result: dict[str, Any] | None
+
         if not data:
             logger.warning(logs.EMPTY_CALL)
             message = RPC_ERRORS[INVALID_REQUEST]
@@ -416,15 +559,25 @@ class RpcBase:
         try:
             result = self.process_call(data, is_notification=is_notification)
         except JsonRpcError as e:
+            # Re-raise JSON-RPC errors as-is
             result = e.as_dict()
-        except Exception as e:
-            logger.debug("Application error: %s", e)
-            exception_data = e.args[0] if len(e.args) == 1 else e.args
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
+            # Expected application-level errors
+            logger.info("Application error in RPC method: %s", e)
             result = generate_error_response(
                 rpc_id=rpc_id,
                 code=GENERIC_APPLICATION_ERROR,
-                message=str(e),
-                data=exception_data,
+                message="Application error occurred",
+                data=None,  # Never leak internal details
+            )
+        except Exception:
+            # Unexpected errors - these indicate bugs
+            logger.exception("Unexpected error processing RPC call")
+            result = generate_error_response(
+                rpc_id=rpc_id,
+                code=INTERNAL_ERROR,
+                message="Internal server error",
+                data=None,  # Never leak internal details
             )
 
         if rpc_id:
@@ -434,32 +587,43 @@ class RpcBase:
 
         return result, is_notification
 
-    def execute_called_method(self, method: Callable, params: list | dict) -> Any:
-        """Get the result of the remote procedure call.
+    def execute_called_method(
+        self, method: Callable | RpcMethodWrapper, params: list | dict
+    ) -> Any:
+        """Execute RPC method with appropriate parameter unpacking.
 
         Parameters
         ----------
-        method : Callable
-            Method to call.
+        method : Callable | RpcMethodWrapper
+            Method to execute.
         params : list | dict
-            Parameters to pass to the method.
+            Parameters to pass.
 
         Returns
         -------
         Any
-            Result of the remote procedure call.
+            Result from the method.
         """
-        func_args = getfullargspec(method).varkw
-        if func_args and "kwargs" in func_args:
-            return (
-                method(*params, consumer=self)
-                if isinstance(params, list)
-                else method(**params, consumer=self)
-            )
-        elif isinstance(params, list):
-            return method(*params)
+        # Unwrap RpcMethodWrapper if needed
+        if hasattr(method, "func"):
+            actual_method = method.func
         else:
-            return method(**params)
+            actual_method = method
+
+        # Check if method accepts **kwargs (can inject consumer)
+        spec = getfullargspec(actual_method)
+        accepts_consumer = spec.varkw is not None  # Has **kwargs parameter
+
+        # Execute with appropriate calling convention
+        if isinstance(params, list):
+            if accepts_consumer:
+                return actual_method(*params, consumer=self)
+            else:
+                return actual_method(*params)
+        elif accepts_consumer:
+            return actual_method(**params, consumer=self)
+        else:
+            return actual_method(**params)
 
     def _base_receive_json(self, data: dict[str, Any]) -> None:
         """Called when receiving a message.

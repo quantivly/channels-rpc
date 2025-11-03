@@ -19,7 +19,6 @@ from channels_rpc.exceptions import (
     METHOD_NOT_FOUND,
     JsonRpcError,
 )
-from channels_rpc.rpc_base import RpcBase
 
 
 @pytest.mark.unit
@@ -189,12 +188,13 @@ class TestGetParams:
         assert result == {}
 
     def test_get_params_with_empty_list(self, mock_rpc_consumer):
-        """Should treat empty list as no params (defaults to {})."""
+        """Should preserve empty list (bug fix for falsy value handling)."""
         data = {"params": []}
         result = mock_rpc_consumer.get_params(data)
 
-        # Empty list is falsy, so implementation defaults to {}
-        assert result == {}
+        # Bug fix: empty list should be preserved, not converted to {}
+        assert result == []
+        assert isinstance(result, list)
 
     def test_get_params_defaults_to_empty_dict(self, mock_rpc_consumer):
         """Should return empty dict when params not provided."""

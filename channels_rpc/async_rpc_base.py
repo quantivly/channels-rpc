@@ -4,39 +4,104 @@ import json
 import logging
 from collections.abc import Callable
 from inspect import getfullargspec
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from channels_rpc import logs
 from channels_rpc.exceptions import (
     GENERIC_APPLICATION_ERROR,
+    INTERNAL_ERROR,
     INVALID_REQUEST,
     RPC_ERRORS,
     JsonRpcError,
     generate_error_response,
 )
-from channels_rpc.rpc_base import RpcBase
+from channels_rpc.rpc_base import RpcBase, RpcMethodWrapper
 from channels_rpc.utils import create_json_rpc_response
 
 logger = logging.getLogger("django.channels.rpc")
 
 
 class AsyncRpcBase(RpcBase):
-    async def execute_called_method(self, method: Callable, params: dict | list) -> Any:
-        func_args = getfullargspec(method).varkw
-        if func_args and "kwargs" in func_args:
-            return (
-                await method(*params, consumer=self)
-                if isinstance(params, list)
-                else await method(**params, consumer=self)
-            )
-        elif isinstance(params, list):
-            return await method(*params)
-        else:
-            return await method(**params)
+    """Async base class for RPC consumers.
 
-    async def process_call(
+    This class extends RpcBase with async support. It should be mixed with an
+    async Django Channels consumer class that provides the required async methods
+    (send_json, send) and synchronous encode_json method. See
+    AsyncChannelsConsumerProtocol for the expected interface.
+    """
+
+    if TYPE_CHECKING:
+        # Async type hints for methods provided by Channels consumer mixin
+        # These override the sync versions in RpcBase for async consumers
+        scope: dict[str, Any]
+
+        async def send_json(  # type: ignore[override]
+            self, content: dict[str, Any], close: bool = False  # noqa: FBT001, FBT002
+        ) -> None:
+            """Send JSON data to the client asynchronously."""
+            ...
+
+        async def send(  # type: ignore[override]
+            self,
+            text_data: str | None = None,
+            bytes_data: bytes | None = None,
+            close: bool = False,  # noqa: FBT001, FBT002
+        ) -> None:
+            """Send text or binary data to the client asynchronously."""
+            ...
+
+        def encode_json(self, content: dict[str, Any]) -> str:
+            """Encode a dict as JSON."""
+            ...
+
+    async def execute_called_method(
+        self, method: Callable | RpcMethodWrapper, params: dict | list
+    ) -> Any:
+        """Execute RPC method with appropriate parameter unpacking.
+
+        Parameters
+        ----------
+        method : Callable | RpcMethodWrapper
+            Method to execute.
+        params : dict | list
+            Parameters to pass.
+
+        Returns
+        -------
+        Any
+            Result from the method.
+        """
+        import asyncio  # noqa: PLC0415
+
+        # Unwrap RpcMethodWrapper if needed
+        if hasattr(method, "func"):
+            actual_method = method.func
+        else:
+            actual_method = method
+
+        # Check if method accepts **kwargs (can inject consumer)
+        spec = getfullargspec(actual_method)
+        accepts_consumer = spec.varkw is not None  # Has **kwargs parameter
+
+        # Execute with appropriate calling convention
+        if isinstance(params, list):
+            if accepts_consumer:
+                result = actual_method(*params, consumer=self)
+            else:
+                result = actual_method(*params)
+        elif accepts_consumer:
+            result = actual_method(**params, consumer=self)
+        else:
+            result = actual_method(**params)
+
+        # Await if the result is a coroutine
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
+
+    async def process_call(  # type: ignore[override]
         self, data: dict[str, Any], *, is_notification: bool = False
-    ):
+    ) -> dict[str, Any] | None:
         method = self.get_method(data, is_notification=is_notification)
         params = self.get_params(data)
         rpc_id, _ = self.get_rpc_id(data)
@@ -57,14 +122,14 @@ class AsyncRpcBase(RpcBase):
             result = None
         return result
 
-    async def intercept_call(
-        self, data: dict[str, Any] | list[str, Any] | None
+    async def intercept_call(  # type: ignore[override]
+        self, data: dict[str, Any] | list[dict[str, Any]] | None
     ) -> tuple[Any, bool]:
         """Handle JSON-RPC 2.0 requests and responses.
 
         Parameters
         ----------
-        data : dict[str, Any] | list[str, Any] | None
+        data : dict[str, Any] | list[dict[str, Any]] | None
             JSON-RPC 2.0 message data.
 
         Returns
@@ -73,6 +138,9 @@ class AsyncRpcBase(RpcBase):
             Result and whether it's a notification.
         """
         logger.debug("Intercepting call: %s", data)
+
+        result: dict[str, Any] | None
+
         if not data:
             logger.warning(logs.EMPTY_CALL)
             message = RPC_ERRORS[INVALID_REQUEST]
@@ -109,15 +177,25 @@ class AsyncRpcBase(RpcBase):
         try:
             result = await self.process_call(data, is_notification=is_notification)
         except JsonRpcError as e:
+            # Re-raise JSON-RPC errors as-is
             result = e.as_dict()
-        except Exception as e:
-            logger.debug("Application error: %s", e)
-            exception_data = e.args[0] if len(e.args) == 1 else e.args
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
+            # Expected application-level errors
+            logger.info("Application error in RPC method: %s", e)
             result = generate_error_response(
                 rpc_id=rpc_id,
                 code=GENERIC_APPLICATION_ERROR,
-                message=str(e),
-                data=exception_data,
+                message="Application error occurred",
+                data=None,  # Never leak internal details
+            )
+        except Exception:
+            # Unexpected errors - these indicate bugs
+            logger.exception("Unexpected error processing RPC call")
+            result = generate_error_response(
+                rpc_id=rpc_id,
+                code=INTERNAL_ERROR,
+                message="Internal server error",
+                data=None,  # Never leak internal details
             )
 
         if rpc_id:
@@ -127,7 +205,9 @@ class AsyncRpcBase(RpcBase):
 
         return result, is_notification
 
-    async def _base_receive_json(self, data: dict[str, Any]) -> None:
+    async def _base_receive_json(  # type: ignore[override]
+        self, data: dict[str, Any]
+    ) -> None:
         logger.debug("Received JSON: %s", data)
         result, is_notification = await self.intercept_call(data)
         if not is_notification:
