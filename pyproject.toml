@@ -3,7 +3,7 @@ authors = ["Zvi Baratz <zvi.baratz@quantivly.com>"]
 description = "JSON-RPC implementation for Django's channels library."
 name = "channels-rpc"
 readme = "README.md"
-version = "0.3.6"
+version = "1.0.0"
 
 [tool.poetry.dependencies]
 python = ">=3.10"
@@ -49,6 +49,7 @@ markers = [
     "http: HTTP consumer tests",
     "slow: Tests that take longer to run",
     "django: Tests that require Django database access",
+    "performance: Performance and load tests for benchmarking",
 ]
 
 # Additional pytest options

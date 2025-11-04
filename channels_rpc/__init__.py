@@ -49,6 +49,7 @@ from channels_rpc.limits import (
     MAX_METHOD_NAME_LENGTH,
     MAX_NESTING_DEPTH,
     MAX_STRING_LENGTH,
+    check_size_limits,
 )
 
 __all__ = [
@@ -63,4 +64,5 @@ __all__ = [
     "JsonRpcWebsocketConsumer",
     "RequestTooLargeError",
     "RpcContext",
+    "check_size_limits",
 ]

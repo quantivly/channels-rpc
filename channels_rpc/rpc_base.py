@@ -220,11 +220,58 @@ class RpcBase:
     @classmethod
     def get_rpc_methods(cls) -> list[str]:
         """List RPC methods available for this consumer.
+        Returns a list of all registered RPC method names for this consumer class.
+        This is useful for introspection, debugging, and building dynamic client
+        interfaces.
 
         Returns
         -------
         list[str]
             List of RPC methods available for this consumer.
+
+        Examples
+        --------
+        Introspect available methods::
+
+            class MyConsumer(JsonRpcWebsocketConsumer):
+                @JsonRpcWebsocketConsumer.rpc_method()
+                def get_user(self, user_id: int):
+                    return {"user": {"id": user_id, "name": "John"}}
+
+                @JsonRpcWebsocketConsumer.rpc_method()
+                def list_users(self):
+                    return {"users": []}
+
+            # Get list of available methods
+            methods = MyConsumer.get_rpc_methods()
+            # Returns: ["get_user", "list_users"]
+
+        Implement a discovery endpoint::
+
+            class ApiConsumer(JsonRpcWebsocketConsumer):
+                @JsonRpcWebsocketConsumer.rpc_method()
+                def discover(self):
+                    \"\"\"Return list of available RPC methods.\"\"\"
+                    methods = self.__class__.get_rpc_methods()
+                    return {
+                        "methods": methods,
+                        "version": "1.0",
+                        "server": "channels-rpc"
+                    }
+
+                @JsonRpcWebsocketConsumer.rpc_method()
+                def get_data(self, resource_id: int):
+                    return {"data": {}}
+
+        Build dynamic test suite::
+
+            import pytest
+
+            def test_all_methods_documented():
+                methods = MyConsumer.get_rpc_methods()
+                for method_name in methods:
+                    method = getattr(MyConsumer, method_name)
+                    assert method.__doc__, f"{method_name} is missing docstring"
         """
         from channels_rpc.registry import get_registry  # noqa: PLC0415
 
@@ -311,11 +358,67 @@ class RpcBase:
     @classmethod
     def get_rpc_notifications(cls) -> list[str]:
         """List RPC notifications available for this consumer.
+        Returns a list of all registered RPC notification handler names for this
+        consumer class. Notifications are one-way messages that do not expect a
+        response.
 
         Returns
         -------
         list[str]
             List of RPC notifications available for this consumer.
+
+        Examples
+        --------
+        Introspect available notification handlers::
+
+            class MyConsumer(JsonRpcWebsocketConsumer):
+                @JsonRpcWebsocketConsumer.rpc_notification()
+                def client_heartbeat(self, timestamp: float):
+                    self.last_heartbeat = timestamp
+                    logger.info(f"Heartbeat received at {timestamp}")
+
+                @JsonRpcWebsocketConsumer.rpc_notification()
+                def client_status_update(self, status: str):
+                    logger.info(f"Client status: {status}")
+
+            # Get list of notification handlers
+            notifications = MyConsumer.get_rpc_notifications()
+            # Returns: ["client_heartbeat", "client_status_update"]
+
+        Build comprehensive API documentation::
+
+            class DocumentedConsumer(JsonRpcWebsocketConsumer):
+                @classmethod
+                def get_api_spec(cls):
+                    \"\"\"Generate API specification for this consumer.\"\"\"
+                    return {
+                        "methods": cls.get_rpc_methods(),
+                        "notifications": cls.get_rpc_notifications(),
+                        "version": "1.0.0"
+                    }
+
+                @JsonRpcWebsocketConsumer.rpc_method()
+                def get_status(self):
+                    return {"status": "ok"}
+
+                @JsonRpcWebsocketConsumer.rpc_notification()
+                def log_event(self, event: dict):
+                    logger.info(f"Event: {event}")
+
+        Validate client capabilities::
+
+            class ValidatingConsumer(JsonRpcWebsocketConsumer):
+                def connect(self):
+                    self.accept()
+                    # Send list of supported notifications to client
+                    self.send_json({
+                        "type": "capabilities",
+                        "supported_notifications": self.get_rpc_notifications()
+                    })
+
+                @JsonRpcWebsocketConsumer.rpc_notification()
+                def client_ready(self):
+                    logger.info("Client is ready")
         """
         from channels_rpc.registry import get_registry  # noqa: PLC0415
 
@@ -324,14 +427,48 @@ class RpcBase:
 
     def validate_scope(self) -> None:
         """Validate and sanitize scope data.
-
         Ensures scope contains required fields and has expected types.
         Should be called during connection establishment.
+
+        The scope dict is provided by Django Channels and contains connection
+        metadata such as client information, headers, and connection type.
+        This method validates that the scope conforms to expected structure.
 
         Raises
         ------
         ValueError
             If scope is invalid or missing required fields.
+
+        Examples
+        --------
+        Validate scope during connection establishment::
+
+            class SecureConsumer(JsonRpcWebsocketConsumer):
+                def connect(self):
+                    try:
+                        self.validate_scope()
+                        # Extract and validate client IP
+                        client_host, client_port = self.scope["client"]
+                        if not self.is_allowed_ip(client_host):
+                            self.close()
+                            return
+                        self.accept()
+                    except ValueError as e:
+                        logger.error(f"Invalid scope: {e}")
+                        self.close()
+
+        Use scope data for authentication::
+
+            class AuthenticatedConsumer(JsonRpcWebsocketConsumer):
+                def connect(self):
+                    self.validate_scope()
+                    # Access validated scope data
+                    headers = dict(self.scope.get("headers", []))
+                    auth_token = headers.get(b"authorization", b"").decode()
+                    if not self.verify_token(auth_token):
+                        self.close()
+                    else:
+                        self.accept()
         """
         if not isinstance(self.scope, dict):
             error_msg = "Scope must be a dict"
@@ -351,6 +488,9 @@ class RpcBase:
 
     def notify_channel(self, method: str, params: dict[str, Any]) -> None:
         """Notify a channel.
+        Sends a JSON-RPC 2.0 notification (a request without an id) to the connected
+        client. Unlike regular RPC method calls, notifications do not expect or wait
+        for a response.
 
         Parameters
         ----------
@@ -358,6 +498,33 @@ class RpcBase:
             Method name.
         params : dict[str, Any]
             Method parameters.
+
+        Examples
+        --------
+        Send a notification to update client state::
+
+            class MyConsumer(JsonRpcWebsocketConsumer):
+                def on_data_changed(self, new_data):
+                    # Notify client about data change without expecting response
+                    self.notify_channel(
+                        method="data_updated",
+                        params={"timestamp": time.time(), "data": new_data}
+                    )
+
+        Send a notification to trigger client action::
+
+            class MonitoringConsumer(JsonRpcWebsocketConsumer):
+                @JsonRpcWebsocketConsumer.rpc_method()
+                def start_monitoring(self, interval: int):
+                    # Client requested monitoring, send periodic notifications
+                    while self.monitoring_active:
+                        metrics = self.collect_metrics()
+                        self.notify_channel(
+                            method="metrics_update",
+                            params={"metrics": metrics}
+                        )
+                        time.sleep(interval)
+                    return {"status": "monitoring_started"}
         """
         # Create a JSON-RPC 2.0 notification (request without id)
         content = create_json_rpc_request(rpc_id=None, method=method, params=params)

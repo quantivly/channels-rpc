@@ -62,4 +62,18 @@ class JsonRpcWebsocketConsumer(JsonWebsocketConsumer, RpcBase):
             return json.dumps(frame)
 
     def receive_json(self, data: dict[str, Any]) -> None:
+        """Handle incoming JSON messages from the WebSocket.
+        This method is called automatically by Django Channels when a JSON message
+        is received over the WebSocket connection. It delegates all RPC processing
+        to the base class implementation.
+
+        This is a Django Channels lifecycle method and should not be called directly.
+        Override this method if you need to intercept or modify messages before
+        RPC processing.
+
+        Parameters
+        ----------
+        data : dict[str, Any]
+            Decoded JSON message data from the WebSocket client.
+        """
         self._base_receive_json(data)

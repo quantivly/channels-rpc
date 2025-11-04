@@ -13,6 +13,113 @@
 - ✅ **Easy integration** - Simple decorator-based API
 - ✅ **Well tested** - 244 tests with 83% coverage
 
+## JSON-RPC 2.0 Compliance
+
+channels-rpc implements the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification) with strict protocol adherence.
+
+### Supported Features
+
+**Version Checking**
+- Only `"jsonrpc": "2.0"` is accepted
+- Other versions are rejected with `INVALID_REQUEST` error (-32600)
+- Validation enforced in `channels_rpc/rpc_base.py`
+
+**Request Format**
+- **Required fields**: `jsonrpc` (string), `method` (string)
+- **Optional fields**: `params` (object or array), `id` (string, number, or null)
+- **Notification requests**: Requests without `id` are treated as notifications (no response sent)
+
+```javascript
+// Method call (expects response)
+{
+    "jsonrpc": "2.0",
+    "method": "subtract",
+    "params": {"minuend": 42, "subtrahend": 23},
+    "id": 1
+}
+
+// Notification (no response)
+{
+    "jsonrpc": "2.0",
+    "method": "notify",
+    "params": {"message": "hello"}
+}
+```
+
+**Response Format**
+- **Success response**: Contains `result` field
+- **Error response**: Contains `error` object with `code` (integer), `message` (string), and optional `data` field
+- All responses include `jsonrpc: "2.0"` and `id` matching the request
+
+```javascript
+// Success
+{"jsonrpc": "2.0", "result": 19, "id": 1}
+
+// Error
+{
+    "jsonrpc": "2.0",
+    "error": {
+        "code": -32601,
+        "message": "Method Not Found: 'nonexistent'",
+        "data": {"method": "nonexistent"}
+    },
+    "id": 1
+}
+```
+
+**Parameter Formats**
+- **Named parameters** (object): `"params": {"name": "value"}`
+- **Positional parameters** (array): `"params": [1, 2, 3]`
+- **Empty/omitted**: Both `"params": {}` and omitted params field are valid
+
+**Error Codes**
+
+Standard JSON-RPC 2.0 error codes (defined in `channels_rpc/exceptions.py`):
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| -32700 | `PARSE_ERROR` | Invalid JSON received |
+| -32600 | `INVALID_REQUEST` | JSON is not a valid Request object |
+| -32601 | `METHOD_NOT_FOUND` | Method does not exist |
+| -32602 | `INVALID_PARAMS` | Invalid method parameters |
+| -32603 | `INTERNAL_ERROR` | Internal JSON-RPC error |
+
+Server-defined error codes (-32099 to -32000):
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| -32000 | `GENERIC_APPLICATION_ERROR` | Application-level error |
+| -32001 | `REQUEST_TOO_LARGE` | Request exceeds size limits |
+| -32701 | `PARSE_RESULT_ERROR` | Error serializing result |
+
+**Request Size Limits**
+
+To prevent denial-of-service attacks, the following limits are enforced (see `channels_rpc/limits.py`):
+
+- **MAX_MESSAGE_SIZE**: 10MB per message
+- **MAX_ARRAY_LENGTH**: 10,000 items in params array
+- **MAX_STRING_LENGTH**: 1MB per string parameter
+- **MAX_NESTING_DEPTH**: 20 levels of nested objects/arrays
+- **MAX_METHOD_NAME_LENGTH**: 256 characters
+
+Requests exceeding these limits return `REQUEST_TOO_LARGE` error (-32001).
+
+### NOT Supported
+
+**Batch Requests**
+
+Batch requests (arrays of multiple JSON-RPC requests) are **intentionally not supported**. Each WebSocket message must contain a single JSON-RPC request or notification.
+
+```javascript
+// NOT SUPPORTED - will be rejected
+[
+    {"jsonrpc": "2.0", "method": "sum", "params": [1, 2], "id": 1},
+    {"jsonrpc": "2.0", "method": "subtract", "params": [42, 23], "id": 2}
+]
+```
+
+To execute multiple methods, send separate WebSocket messages for each request.
+
 ## Installation
 
 ```sh
@@ -26,7 +133,7 @@ It is intended to be used as a WebSocket consumer:
 ```python
 from channels_rpc import JsonRpcWebsocketConsumer
 
-class MyJsonRpcConsumer(JsonRpcConsumer):
+class MyJsonRpcConsumer(JsonRpcWebsocketConsumer):
 
     def connect(self, message, **kwargs):
         """Perform things on WebSocket connection start"""
