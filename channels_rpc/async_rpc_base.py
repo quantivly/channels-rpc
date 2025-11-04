@@ -68,6 +68,8 @@ class AsyncRpcBase(RpcBase):
         """
 
         def decorator(func: Callable) -> Callable:
+            from channels_rpc.registry import get_registry  # noqa: PLC0415
+
             # First, inspect the original sync function BEFORE wrapping
             # This allows rpc_method to properly detect **kwargs
             name = method_name or func.__name__
@@ -90,7 +92,8 @@ class AsyncRpcBase(RpcBase):
                 name=name,
                 accepts_consumer=accepts_consumer,
             )
-            cls.rpc_methods[id(cls)][name] = wrapper
+            registry = get_registry()
+            registry.register_method(cls, name, wrapper)
             return wrapper
 
         return decorator

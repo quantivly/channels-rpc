@@ -18,6 +18,7 @@ import pytest
 
 from channels_rpc.async_rpc_base import AsyncRpcBase
 from channels_rpc.exceptions import JsonRpcErrorCode
+from channels_rpc.registry import get_registry
 
 
 @pytest.mark.unit
@@ -27,9 +28,8 @@ class TestAsyncExecuteCalledMethod:
     @pytest.mark.asyncio
     async def test_execute_with_dict_params(self, async_consumer_with_methods):
         """Should execute async method with dict params."""
-        method = async_consumer_with_methods.rpc_methods[
-            id(async_consumer_with_methods.__class__)
-        ]["async_add"]
+        registry = get_registry()
+        method = registry.get_method(async_consumer_with_methods.__class__, "async_add")
         params = {"a": 5, "b": 3}
 
         result = await async_consumer_with_methods._execute_called_method(
@@ -41,9 +41,8 @@ class TestAsyncExecuteCalledMethod:
     @pytest.mark.asyncio
     async def test_execute_with_list_params(self, async_consumer_with_methods):
         """Should execute async method with list params."""
-        method = async_consumer_with_methods.rpc_methods[
-            id(async_consumer_with_methods.__class__)
-        ]["async_add"]
+        registry = get_registry()
+        method = registry.get_method(async_consumer_with_methods.__class__, "async_add")
         params = [7, 3]
 
         result = await async_consumer_with_methods._execute_called_method(
@@ -57,9 +56,10 @@ class TestAsyncExecuteCalledMethod:
         self, async_consumer_with_methods
     ):
         """Should inject consumer when async method accepts **kwargs."""
-        method = async_consumer_with_methods.rpc_methods[
-            id(async_consumer_with_methods.__class__)
-        ]["async_echo"]
+        registry = get_registry()
+        method = registry.get_method(
+            async_consumer_with_methods.__class__, "async_echo"
+        )
         params = {"message": "test"}
 
         result = await async_consumer_with_methods._execute_called_method(
@@ -73,9 +73,8 @@ class TestAsyncExecuteCalledMethod:
         self, async_consumer_with_methods
     ):
         """Should not inject consumer when async method doesn't accept **kwargs."""
-        method = async_consumer_with_methods.rpc_methods[
-            id(async_consumer_with_methods.__class__)
-        ]["async_add"]
+        registry = get_registry()
+        method = registry.get_method(async_consumer_with_methods.__class__, "async_add")
         params = {"a": 1, "b": 1}
 
         result = await async_consumer_with_methods._execute_called_method(
@@ -560,9 +559,11 @@ class TestDatabaseRpcMethod:
             return "success"
 
         # Check that metadata is preserved
-        methods_dict = TestConsumer.rpc_methods[id(TestConsumer)]
-        wrapper = methods_dict["documented_method"]
+        registry = get_registry()
+        wrapper = registry.get_method(TestConsumer, "documented_method")
+        assert wrapper is not None
         assert wrapper.func.__name__ == "documented_method"
+        assert wrapper.func.__doc__ is not None
         assert "test docstring" in wrapper.func.__doc__
 
     @pytest.mark.asyncio

@@ -16,6 +16,7 @@ from __future__ import annotations
 import pytest
 
 from channels_rpc.exceptions import JsonRpcErrorCode
+from channels_rpc.registry import get_registry
 from channels_rpc.rpc_base import RpcBase
 
 
@@ -74,9 +75,8 @@ class TestExecuteCalledMethod:
 
     def test_execute_with_dict_params(self, consumer_with_methods):
         """Should execute method with dict params."""
-        method = consumer_with_methods.rpc_methods[id(consumer_with_methods.__class__)][
-            "add"
-        ]
+        registry = get_registry()
+        method = registry.get_method(consumer_with_methods.__class__, "add")
         params = {"a": 5, "b": 3}
 
         result = consumer_with_methods._execute_called_method(method, params)
@@ -85,9 +85,8 @@ class TestExecuteCalledMethod:
 
     def test_execute_with_list_params(self, consumer_with_methods):
         """Should execute method with list params."""
-        method = consumer_with_methods.rpc_methods[id(consumer_with_methods.__class__)][
-            "add"
-        ]
+        registry = get_registry()
+        method = registry.get_method(consumer_with_methods.__class__, "add")
         params = [7, 3]
 
         result = consumer_with_methods._execute_called_method(method, params)
@@ -96,9 +95,8 @@ class TestExecuteCalledMethod:
 
     def test_execute_injects_consumer_for_kwargs(self, consumer_with_methods):
         """Should inject consumer when method accepts **kwargs."""
-        method = consumer_with_methods.rpc_methods[id(consumer_with_methods.__class__)][
-            "echo"
-        ]
+        registry = get_registry()
+        method = registry.get_method(consumer_with_methods.__class__, "echo")
         params = {"message": "test"}
 
         result = consumer_with_methods._execute_called_method(method, params)
@@ -107,9 +105,8 @@ class TestExecuteCalledMethod:
 
     def test_execute_without_consumer_injection(self, consumer_with_methods):
         """Should not inject consumer when method doesn't accept **kwargs."""
-        method = consumer_with_methods.rpc_methods[id(consumer_with_methods.__class__)][
-            "add"
-        ]
+        registry = get_registry()
+        method = registry.get_method(consumer_with_methods.__class__, "add")
         params = {"a": 1, "b": 1}
 
         result = consumer_with_methods._execute_called_method(method, params)

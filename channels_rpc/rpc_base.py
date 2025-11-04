@@ -15,7 +15,6 @@ from __future__ import annotations
 import functools
 import json
 import logging
-from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import getfullargspec
@@ -139,9 +138,6 @@ class RpcBase:
             """Encode a dict as JSON."""
             ...
 
-    rpc_methods: defaultdict = defaultdict(dict)
-    rpc_notifications: defaultdict = defaultdict(dict)
-
     @classmethod
     def rpc_method(
         cls,
@@ -177,6 +173,8 @@ class RpcBase:
             )
 
         def wrap(method: Callable) -> RpcMethodWrapper:
+            from channels_rpc.registry import get_registry  # noqa: PLC0415
+
             name = method_name or method.__name__
 
             # Inspect function signature ONCE at registration
@@ -189,7 +187,8 @@ class RpcBase:
                 name=name,
                 accepts_consumer=accepts_consumer,
             )
-            cls.rpc_methods[id(cls)][name] = wrapper
+            registry = get_registry()
+            registry.register_method(cls, name, wrapper)
             return wrapper
 
         return wrap
@@ -203,10 +202,10 @@ class RpcBase:
         list[str]
             List of RPC methods available for this consumer.
         """
-        try:
-            return list(cls.rpc_methods[id(cls)])
-        except KeyError:
-            return []
+        from channels_rpc.registry import get_registry  # noqa: PLC0415
+
+        registry = get_registry()
+        return registry.list_method_names(cls)
 
     @classmethod
     def rpc_notification(
@@ -243,6 +242,8 @@ class RpcBase:
             )
 
         def wrap(method: Callable) -> RpcMethodWrapper:
+            from channels_rpc.registry import get_registry  # noqa: PLC0415
+
             name = notification_name or method.__name__
 
             # Inspect function signature ONCE at registration
@@ -255,7 +256,8 @@ class RpcBase:
                 name=name,
                 accepts_consumer=accepts_consumer,
             )
-            cls.rpc_notifications[id(cls)][name] = wrapper
+            registry = get_registry()
+            registry.register_notification(cls, name, wrapper)
             return wrapper
 
         return wrap
@@ -269,10 +271,10 @@ class RpcBase:
         list[str]
             List of RPC notifications available for this consumer.
         """
-        try:
-            return list(cls.rpc_notifications[id(cls)])
-        except KeyError:
-            return []
+        from channels_rpc.registry import get_registry  # noqa: PLC0415
+
+        registry = get_registry()
+        return list(registry.get_notifications(cls).keys())
 
     def validate_scope(self) -> None:
         """Validate and sanitize scope data.
@@ -387,14 +389,22 @@ class RpcBase:
         JsonRpcError
             RPC method not supported.
         """
+        from channels_rpc.registry import get_registry  # noqa: PLC0415
+
         self._validate_call(data)
         rpc_id = data.get("id")
         method_name = data["method"]
         logger.debug("Getting method: %s", method_name)
-        class_id = id(self.__class__)
-        methods = self.rpc_notifications if is_notification else self.rpc_methods
+
+        registry = get_registry()
+        methods = (
+            registry.get_notifications(self.__class__)
+            if is_notification
+            else registry.get_methods(self.__class__)
+        )
+
         try:
-            method = methods[class_id][method_name]
+            method = methods[method_name]
         except KeyError as e:
             raise JsonRpcError(
                 rpc_id, JsonRpcErrorCode.METHOD_NOT_FOUND, data={"method": method_name}
