@@ -48,6 +48,7 @@ markers = [
     "websocket: WebSocket-specific tests",
     "http: HTTP consumer tests",
     "slow: Tests that take longer to run",
+    "django: Tests that require Django database access",
 ]
 
 # Additional pytest options

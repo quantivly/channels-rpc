@@ -100,6 +100,40 @@ async def ping(fake_an_error):
     return "ping"
 ```
 
+## Database Access in Async Methods
+
+For async RPC methods that need to access Django ORM, use the `@database_rpc_method()` decorator:
+
+```python
+from channels_rpc import AsyncJsonRpcWebsocketConsumer
+from myapp.models import User
+
+class MyConsumer(AsyncJsonRpcWebsocketConsumer):
+    pass
+
+@MyConsumer.database_rpc_method()
+def get_user(user_id: int):
+    """Get user information.
+
+    Note: This is a SYNC function that will be automatically
+    wrapped with database_sync_to_async.
+    """
+    user = User.objects.get(id=user_id)
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+    }
+
+@MyConsumer.database_rpc_method("users.list")
+def list_users(limit: int = 10):
+    """List users."""
+    users = User.objects.all()[:limit]
+    return [{"id": u.id, "username": u.username} for u in users]
+```
+
+**Important**: The decorated function should be synchronous (not async), as it will be automatically wrapped with `database_sync_to_async`.
+
 ## [Sessions and other parameters from Consumer object](#consumer)
 
 The original channel message - that can contain sessions (if activated with

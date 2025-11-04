@@ -6,6 +6,8 @@ from collections.abc import Callable
 from inspect import getfullargspec
 from typing import TYPE_CHECKING, Any
 
+from channels.db import database_sync_to_async
+
 from channels_rpc import logs
 from channels_rpc.exceptions import (
     JsonRpcError,
@@ -26,6 +28,72 @@ class AsyncRpcBase(RpcBase):
     (send_json, send) and synchronous encode_json method. See
     AsyncChannelsConsumerProtocol for the expected interface.
     """
+
+    @classmethod
+    def database_rpc_method(
+        cls,
+        method_name: str | None = None,
+        *,
+        websocket: bool = True,
+    ) -> Callable:
+        """Register an async RPC method that needs database access.
+
+        This decorator combines rpc_method() with database_sync_to_async(),
+        allowing the method to safely access Django ORM from async context.
+
+        Parameters
+        ----------
+        method_name : str | None, optional
+            Custom name for the method. If None, uses function __name__.
+        websocket : bool, optional
+            Enable for WebSocket transport, by default True.
+
+        Returns
+        -------
+        Callable
+            The decorated method.
+
+        Examples
+        --------
+        >>> @MyConsumer.database_rpc_method()
+        >>> def get_user(user_id: int) -> dict:
+        ...     # This can safely use Django ORM
+        ...     user = User.objects.get(id=user_id)
+        ...     return {"name": user.username, "email": user.email}
+
+        Notes
+        -----
+        The decorated function should be synchronous (not async), as it will
+        be automatically wrapped with database_sync_to_async.
+        """
+
+        def decorator(func: Callable) -> Callable:
+            # First, inspect the original sync function BEFORE wrapping
+            # This allows rpc_method to properly detect **kwargs
+            name = method_name or func.__name__
+            spec = getfullargspec(func)
+            accepts_consumer = spec.varkw is not None
+
+            # Now wrap with database_sync_to_async
+            async_func = database_sync_to_async(func)
+
+            # Copy over function metadata
+            async_func.__name__ = func.__name__
+            async_func.__qualname__ = func.__qualname__
+            if func.__doc__:
+                async_func.__doc__ = func.__doc__
+
+            # Create RpcMethodWrapper directly without re-inspection
+            wrapper = RpcMethodWrapper(
+                func=async_func,
+                options={"websocket": websocket, "http": True},
+                name=name,
+                accepts_consumer=accepts_consumer,
+            )
+            cls.rpc_methods[id(cls)][name] = wrapper
+            return wrapper
+
+        return decorator
 
     if TYPE_CHECKING:
         # Async type hints for methods provided by Channels consumer mixin
