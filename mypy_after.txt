@@ -1,8 +1,0 @@
-channels_rpc/rpc_base.py:496: error: Incompatible types in assignment (expression has type "dict[Any, Any] | None", variable has type "dict[str, Any]")  [assignment]
-channels_rpc/async_rpc_base.py:40: error: Return type "Coroutine[Any, Any, None]" of "send_json" incompatible with return type "None" in supertype "channels_rpc.rpc_base.RpcBase"  [override]
-channels_rpc/async_rpc_base.py:44: error: Return type "Coroutine[Any, Any, None]" of "send" incompatible with return type "None" in supertype "channels_rpc.rpc_base.RpcBase"  [override]
-channels_rpc/async_rpc_base.py:74: error: Return type "Coroutine[Any, Any, dict[str, Any] | None]" of "process_call" incompatible with return type "dict[Any, Any] | None" in supertype "channels_rpc.rpc_base.RpcBase"  [override]
-channels_rpc/async_rpc_base.py:97: error: Return type "Coroutine[Any, Any, tuple[Any, bool]]" of "intercept_call" incompatible with return type "tuple[Any, bool]" in supertype "channels_rpc.rpc_base.RpcBase"  [override]
-channels_rpc/async_rpc_base.py:147: error: Incompatible types in assignment (expression has type "dict[str, Any] | None", variable has type "dict[str, Any]")  [assignment]
-channels_rpc/async_rpc_base.py:167: error: Return type "Coroutine[Any, Any, None]" of "_base_receive_json" incompatible with return type "None" in supertype "channels_rpc.rpc_base.RpcBase"  [override]
-Found 7 errors in 2 files (checked 10 source files)
