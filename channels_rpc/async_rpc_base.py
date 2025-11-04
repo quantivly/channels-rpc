@@ -608,8 +608,10 @@ class AsyncRpcBase(RpcBase):
             TypeError,
             KeyError,
             AttributeError,
-            Exception,
         ) as e:
+            # Handle application-level errors only
+            # Note: Exception removed from tuple to avoid masking system exceptions
+            # Unexpected errors will propagate and be logged by outer error handlers
             result = self._handle_rpc_exception(e, rpc_id, method_name, start_time)
 
         if rpc_id:
