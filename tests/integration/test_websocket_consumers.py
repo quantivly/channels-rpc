@@ -17,6 +17,7 @@ import pytest
 from channels.testing import WebsocketCommunicator
 
 from channels_rpc import AsyncJsonRpcWebsocketConsumer, JsonRpcWebsocketConsumer
+from channels_rpc.context import RpcContext
 from channels_rpc.exceptions import JsonRpcErrorCode
 
 # ============================================================================
@@ -498,15 +499,14 @@ class TestWebSocketConsumerFeatures:
 
     @pytest.mark.asyncio
     async def test_consumer_injection_sync(self):
-        """Should inject consumer instance in sync methods."""
+        """Should inject consumer instance in sync methods via RpcContext."""
 
         class TestConsumer(JsonRpcWebsocketConsumer):
             pass
 
         @TestConsumer.rpc_method()
-        def get_consumer_type(**kwargs) -> str:
-            consumer = kwargs.get("consumer")
-            return consumer.__class__.__name__ if consumer else "None"
+        def get_consumer_type(ctx: RpcContext) -> str:
+            return ctx.consumer.__class__.__name__
 
         communicator = WebsocketCommunicator(TestConsumer.as_asgi(), "/ws/")
         await communicator.connect()
@@ -523,17 +523,16 @@ class TestWebSocketConsumerFeatures:
 
     @pytest.mark.asyncio
     async def test_consumer_injection_async(self):
-        """Should inject consumer instance in async methods."""
+        """Should inject consumer instance in async methods via RpcContext."""
 
         class TestAsyncConsumer(AsyncJsonRpcWebsocketConsumer):
             pass
 
         @TestAsyncConsumer.rpc_method()
-        async def get_consumer_info(**kwargs) -> dict:
-            consumer = kwargs.get("consumer")
+        async def get_consumer_info(ctx: RpcContext) -> dict:
             return {
-                "has_consumer": consumer is not None,
-                "type": consumer.__class__.__name__ if consumer else None,
+                "has_consumer": ctx.consumer is not None,
+                "type": ctx.consumer.__class__.__name__,
             }
 
         communicator = WebsocketCommunicator(TestAsyncConsumer.as_asgi(), "/ws/")

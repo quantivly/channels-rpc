@@ -17,7 +17,6 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from inspect import getfullargspec
 from typing import TYPE_CHECKING, Any
 
 from channels_rpc import logs
@@ -27,6 +26,9 @@ from channels_rpc.exceptions import (
     generate_error_response,
 )
 from channels_rpc.utils import create_json_rpc_request, create_json_rpc_response
+
+if TYPE_CHECKING:
+    from channels_rpc.context import RpcContext
 
 logger = logging.getLogger("django.channels.rpc")
 
@@ -43,14 +45,14 @@ class RpcMethodWrapper:
         Transport options (websocket, http).
     name : str
         Method name to register.
-    accepts_consumer : bool
-        Whether method accepts consumer injection via **kwargs.
+    accepts_context : bool
+        Whether method accepts RpcContext as first parameter.
     """
 
     func: Callable[..., Any]
     options: dict[str, bool]
     name: str
-    accepts_consumer: bool
+    accepts_context: bool
 
     def __post_init__(self) -> None:
         """Initialize wrapper attributes after dataclass init."""
@@ -162,6 +164,7 @@ class RpcBase:
         Callable
             Decorated function.
         """
+        import inspect  # noqa: PLC0415
         import warnings  # noqa: PLC0415
 
         if not http:
@@ -173,19 +176,40 @@ class RpcBase:
             )
 
         def wrap(method: Callable) -> RpcMethodWrapper:
+            from channels_rpc.context import RpcContext  # noqa: PLC0415
             from channels_rpc.registry import get_registry  # noqa: PLC0415
 
             name = method_name or method.__name__
 
-            # Inspect function signature ONCE at registration
-            spec = getfullargspec(method)
-            accepts_consumer = spec.varkw is not None  # Has **kwargs parameter
+            # Check if first parameter is RpcContext
+            accepts_context = False
+            try:
+                sig = inspect.signature(method)
+                params = list(sig.parameters.values())
+                # Skip 'self' parameter if present (for methods vs free functions)
+                first_param_idx = 1 if (params and params[0].name == "self") else 0
+                if len(params) > first_param_idx:
+                    first_param = params[first_param_idx]
+                    if first_param.annotation is not inspect.Parameter.empty:
+                        # Check if annotation is RpcContext
+                        # (handles both direct type and string annotation
+                        # from __future__.annotations)
+                        annotation = first_param.annotation
+                        if (
+                            annotation is RpcContext
+                            or annotation == "RpcContext"
+                            or getattr(annotation, "__name__", "") == "RpcContext"
+                        ):
+                            accepts_context = True
+            except Exception:  # noqa: S110
+                # If inspection fails, assume no context
+                pass
 
             wrapper = RpcMethodWrapper(
                 func=method,
                 options={"websocket": websocket, "http": http},
                 name=name,
-                accepts_consumer=accepts_consumer,
+                accepts_context=accepts_context,
             )
             registry = get_registry()
             registry.register_method(cls, name, wrapper)
@@ -231,6 +255,7 @@ class RpcBase:
         Callable
             Decorated function.
         """
+        import inspect  # noqa: PLC0415
         import warnings  # noqa: PLC0415
 
         if not http:
@@ -242,19 +267,40 @@ class RpcBase:
             )
 
         def wrap(method: Callable) -> RpcMethodWrapper:
+            from channels_rpc.context import RpcContext  # noqa: PLC0415
             from channels_rpc.registry import get_registry  # noqa: PLC0415
 
             name = notification_name or method.__name__
 
-            # Inspect function signature ONCE at registration
-            spec = getfullargspec(method)
-            accepts_consumer = spec.varkw is not None  # Has **kwargs parameter
+            # Check if first parameter is RpcContext
+            accepts_context = False
+            try:
+                sig = inspect.signature(method)
+                params = list(sig.parameters.values())
+                # Skip 'self' parameter if present (for methods vs free functions)
+                first_param_idx = 1 if (params and params[0].name == "self") else 0
+                if len(params) > first_param_idx:
+                    first_param = params[first_param_idx]
+                    if first_param.annotation is not inspect.Parameter.empty:
+                        # Check if annotation is RpcContext
+                        # (handles both direct type and string annotation
+                        # from __future__.annotations)
+                        annotation = first_param.annotation
+                        if (
+                            annotation is RpcContext
+                            or annotation == "RpcContext"
+                            or getattr(annotation, "__name__", "") == "RpcContext"
+                        ):
+                            accepts_context = True
+            except Exception:  # noqa: S110
+                # If inspection fails, assume no context
+                pass
 
             wrapper = RpcMethodWrapper(
                 func=method,
                 options={"websocket": websocket, "http": http},
                 name=name,
-                accepts_consumer=accepts_consumer,
+                accepts_context=accepts_context,
             )
             registry = get_registry()
             registry.register_notification(cls, name, wrapper)
@@ -505,11 +551,23 @@ class RpcBase:
         dict[str, Any] | None
             Result of the remote procedure call.
         """
+        from channels_rpc.context import RpcContext  # noqa: PLC0415
+
         method = self._get_method(data, is_notification=is_notification)
         params = self._get_params(data)
         rpc_id, _ = self._get_rpc_id(data)
+        method_name = data["method"]
+
+        # Create execution context
+        context = RpcContext(
+            consumer=self,
+            method_name=method_name,
+            rpc_id=rpc_id,
+            is_notification=is_notification,
+        )
+
         logger.debug("Executing %s(%s)", method.__qualname__, json.dumps(params))
-        result = self._execute_called_method(method, params)
+        result = self._execute_called_method(method, params, context)
         if not is_notification:
             logger.debug("Execution result: %s", result)
             # Return standard JSON-RPC 2.0 response
@@ -593,7 +651,10 @@ class RpcBase:
         return result, is_notification
 
     def _execute_called_method(
-        self, method: Callable | RpcMethodWrapper, params: list | dict
+        self,
+        method: Callable | RpcMethodWrapper,
+        params: list | dict,
+        context: RpcContext,
     ) -> Any:
         """Execute RPC method with appropriate parameter unpacking.
 
@@ -605,6 +666,8 @@ class RpcBase:
             Method to execute.
         params : list | dict
             Parameters to pass.
+        context : RpcContext
+            Execution context to pass if method accepts it.
 
         Returns
         -------
@@ -614,21 +677,21 @@ class RpcBase:
         # Unwrap RpcMethodWrapper and get cached introspection result
         if isinstance(method, RpcMethodWrapper):
             actual_method = method.func
-            accepts_consumer = method.accepts_consumer  # Use cached value
+            accepts_context = method.accepts_context  # Use cached value
         else:
             # Fallback for raw callables (shouldn't happen in normal flow)
+            # Check if it's an old-style method wrapper with accepts_consumer
             actual_method = method
-            spec = getfullargspec(actual_method)
-            accepts_consumer = spec.varkw is not None
+            accepts_context = False
 
         # Execute with appropriate calling convention
-        if isinstance(params, list):
-            if accepts_consumer:
-                return actual_method(*params, consumer=self)
+        if accepts_context:
+            if isinstance(params, list):
+                return actual_method(context, *params)
             else:
-                return actual_method(*params)
-        elif accepts_consumer:
-            return actual_method(**params, consumer=self)
+                return actual_method(context, **params)
+        elif isinstance(params, list):
+            return actual_method(*params)
         else:
             return actual_method(**params)
 

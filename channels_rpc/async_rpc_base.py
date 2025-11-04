@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from inspect import getfullargspec
 from typing import TYPE_CHECKING, Any
 
 from channels.db import database_sync_to_async
@@ -16,6 +15,9 @@ from channels_rpc.exceptions import (
 )
 from channels_rpc.rpc_base import RpcBase, RpcMethodWrapper
 from channels_rpc.utils import create_json_rpc_response
+
+if TYPE_CHECKING:
+    from channels_rpc.context import RpcContext
 
 logger = logging.getLogger("django.channels.rpc")
 
@@ -56,7 +58,7 @@ class AsyncRpcBase(RpcBase):
         Examples
         --------
         >>> @MyConsumer.database_rpc_method()
-        >>> def get_user(user_id: int) -> dict:
+        >>> def get_user(ctx: RpcContext, user_id: int) -> dict:
         ...     # This can safely use Django ORM
         ...     user = User.objects.get(id=user_id)
         ...     return {"name": user.username, "email": user.email}
@@ -68,13 +70,36 @@ class AsyncRpcBase(RpcBase):
         """
 
         def decorator(func: Callable) -> Callable:
+            import inspect  # noqa: PLC0415
+
+            from channels_rpc.context import RpcContext  # noqa: PLC0415
             from channels_rpc.registry import get_registry  # noqa: PLC0415
 
             # First, inspect the original sync function BEFORE wrapping
-            # This allows rpc_method to properly detect **kwargs
+            # Check if first parameter is RpcContext
             name = method_name or func.__name__
-            spec = getfullargspec(func)
-            accepts_consumer = spec.varkw is not None
+            accepts_context = False
+            try:
+                sig = inspect.signature(func)
+                params = list(sig.parameters.values())
+                # Skip 'self' parameter if present (for methods vs free functions)
+                first_param_idx = 1 if (params and params[0].name == "self") else 0
+                if len(params) > first_param_idx:
+                    first_param = params[first_param_idx]
+                    if first_param.annotation is not inspect.Parameter.empty:
+                        # Check if annotation is RpcContext
+                        # (handles both direct type and string annotation
+                        # from __future__.annotations)
+                        annotation = first_param.annotation
+                        if (
+                            annotation is RpcContext
+                            or annotation == "RpcContext"
+                            or getattr(annotation, "__name__", "") == "RpcContext"
+                        ):
+                            accepts_context = True
+            except Exception:  # noqa: S110
+                # If inspection fails, assume no context
+                pass
 
             # Now wrap with database_sync_to_async
             async_func = database_sync_to_async(func)
@@ -90,7 +115,7 @@ class AsyncRpcBase(RpcBase):
                 func=async_func,
                 options={"websocket": websocket, "http": True},
                 name=name,
-                accepts_consumer=accepts_consumer,
+                accepts_context=accepts_context,
             )
             registry = get_registry()
             registry.register_method(cls, name, wrapper)
@@ -123,7 +148,10 @@ class AsyncRpcBase(RpcBase):
             ...
 
     async def _execute_called_method(
-        self, method: Callable | RpcMethodWrapper, params: dict | list
+        self,
+        method: Callable | RpcMethodWrapper,
+        params: dict | list,
+        context: RpcContext,
     ) -> Any:
         """Execute RPC method with appropriate parameter unpacking.
 
@@ -135,6 +163,8 @@ class AsyncRpcBase(RpcBase):
             Method to execute.
         params : dict | list
             Parameters to pass.
+        context : RpcContext
+            Execution context to pass if method accepts it.
 
         Returns
         -------
@@ -146,21 +176,20 @@ class AsyncRpcBase(RpcBase):
         # Unwrap RpcMethodWrapper and get cached introspection result
         if isinstance(method, RpcMethodWrapper):
             actual_method = method.func
-            accepts_consumer = method.accepts_consumer  # Use cached value
+            accepts_context = method.accepts_context  # Use cached value
         else:
             # Fallback for raw callables (shouldn't happen in normal flow)
             actual_method = method
-            spec = getfullargspec(actual_method)
-            accepts_consumer = spec.varkw is not None
+            accepts_context = False
 
         # Execute with appropriate calling convention
-        if isinstance(params, list):
-            if accepts_consumer:
-                result = actual_method(*params, consumer=self)
+        if accepts_context:
+            if isinstance(params, list):
+                result = actual_method(context, *params)
             else:
-                result = actual_method(*params)
-        elif accepts_consumer:
-            result = actual_method(**params, consumer=self)
+                result = actual_method(context, **params)
+        elif isinstance(params, list):
+            result = actual_method(*params)
         else:
             result = actual_method(**params)
 
@@ -172,11 +201,23 @@ class AsyncRpcBase(RpcBase):
     async def _process_call(  # type: ignore[override]
         self, data: dict[str, Any], *, is_notification: bool = False
     ) -> dict[str, Any] | None:
+        from channels_rpc.context import RpcContext  # noqa: PLC0415
+
         method = self._get_method(data, is_notification=is_notification)
         params = self._get_params(data)
         rpc_id, _ = self._get_rpc_id(data)
+        method_name = data["method"]
+
+        # Create execution context
+        context = RpcContext(
+            consumer=self,
+            method_name=method_name,
+            rpc_id=rpc_id,
+            is_notification=is_notification,
+        )
+
         logger.debug("Executing %s(%s)", method.__qualname__, json.dumps(params))
-        result = await self._execute_called_method(method, params)
+        result = await self._execute_called_method(method, params, context)
         if not is_notification:
             logger.debug("Execution result: %s", result)
             # Return standard JSON-RPC 2.0 response

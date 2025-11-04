@@ -3,6 +3,7 @@
 import gc
 import weakref
 
+from channels_rpc.context import RpcContext
 from channels_rpc.registry import MethodRegistry, get_registry
 from channels_rpc.rpc_base import RpcBase, RpcMethodWrapper
 
@@ -21,7 +22,7 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="test",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_method(TestClass, "test", wrapper)
@@ -40,7 +41,7 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="notify",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_notification(TestClass, "notify", wrapper)
@@ -59,13 +60,13 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="method1",
-            accepts_consumer=False,
+            accepts_context=False,
         )
         wrapper2 = RpcMethodWrapper(
             func=lambda: None,
             options={"websocket": True},
             name="method2",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_method(TestClass, "method1", wrapper1)
@@ -107,7 +108,7 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="test",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_method(TestClass, "test", wrapper)
@@ -133,13 +134,13 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="method1",
-            accepts_consumer=False,
+            accepts_context=False,
         )
         wrapper2 = RpcMethodWrapper(
             func=lambda: None,
             options={"websocket": True},
             name="method2",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_method(TestClass, "method1", wrapper1)
@@ -171,7 +172,7 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="test",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         # Create a weak reference to track the class
@@ -203,13 +204,13 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="method1",
-            accepts_consumer=False,
+            accepts_context=False,
         )
         wrapper2 = RpcMethodWrapper(
             func=lambda: None,
             options={"websocket": True},
             name="method2",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_method(TestClass1, "method1", wrapper1)
@@ -231,13 +232,13 @@ class TestMethodRegistry:
             func=lambda: 1,
             options={"websocket": True},
             name="test",
-            accepts_consumer=False,
+            accepts_context=False,
         )
         wrapper2 = RpcMethodWrapper(
             func=lambda: 2,
             options={"websocket": True},
             name="test",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_method(TestClass, "test", wrapper1)
@@ -257,13 +258,13 @@ class TestMethodRegistry:
             func=lambda: None,
             options={"websocket": True},
             name="test",
-            accepts_consumer=False,
+            accepts_context=False,
         )
         notification_wrapper = RpcMethodWrapper(
             func=lambda: None,
             options={"websocket": True},
             name="test",
-            accepts_consumer=False,
+            accepts_context=False,
         )
 
         registry.register_method(TestClass, "test", method_wrapper)
@@ -410,7 +411,7 @@ class TestRegistryIntegration:
             pass
 
         @TestConsumer.rpc_method("test", websocket=True)
-        def test_method(self, **kwargs):
+        def test_method(self, ctx: RpcContext):
             pass
 
         registry = get_registry()
@@ -419,4 +420,4 @@ class TestRegistryIntegration:
         assert wrapper is not None
         assert wrapper.name == "test"
         assert wrapper.options["websocket"] is True
-        assert wrapper.accepts_consumer is True  # Has **kwargs
+        assert wrapper.accepts_context is True  # Has RpcContext parameter

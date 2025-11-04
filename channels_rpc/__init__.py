@@ -9,6 +9,9 @@ Consumers:
     - AsyncJsonRpcWebsocketConsumer: Async WebSocket JSON-RPC consumer
     - JsonRpcWebsocketConsumer: Sync WebSocket JSON-RPC consumer
 
+Context:
+    - RpcContext: Execution context for RPC methods
+
 Exceptions:
     - JsonRpcError: Base JSON-RPC error exception
     - JsonRpcErrorCode: Enum of JSON-RPC 2.0 error codes
@@ -33,6 +36,7 @@ Size Limits (for custom validation):
 from channels_rpc.async_json_rpc_websocket_consumer import (
     AsyncJsonRpcWebsocketConsumer,
 )
+from channels_rpc.context import RpcContext
 from channels_rpc.exceptions import (
     JsonRpcError,
     JsonRpcErrorCode,
@@ -58,4 +62,5 @@ __all__ = [
     "JsonRpcErrorCode",
     "JsonRpcWebsocketConsumer",
     "RequestTooLargeError",
+    "RpcContext",
 ]

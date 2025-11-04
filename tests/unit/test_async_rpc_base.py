@@ -17,6 +17,7 @@ from __future__ import annotations
 import pytest
 
 from channels_rpc.async_rpc_base import AsyncRpcBase
+from channels_rpc.context import RpcContext
 from channels_rpc.exceptions import JsonRpcErrorCode
 from channels_rpc.registry import get_registry
 
@@ -32,8 +33,16 @@ class TestAsyncExecuteCalledMethod:
         method = registry.get_method(async_consumer_with_methods.__class__, "async_add")
         params = {"a": 5, "b": 3}
 
+        # Create context (not used by async_add method)
+        context = RpcContext(
+            consumer=async_consumer_with_methods,
+            method_name="async_add",
+            rpc_id=1,
+            is_notification=False,
+        )
+
         result = await async_consumer_with_methods._execute_called_method(
-            method, params
+            method, params, context
         )
 
         assert result == 8
@@ -45,8 +54,16 @@ class TestAsyncExecuteCalledMethod:
         method = registry.get_method(async_consumer_with_methods.__class__, "async_add")
         params = [7, 3]
 
+        # Create context (not used by async_add method)
+        context = RpcContext(
+            consumer=async_consumer_with_methods,
+            method_name="async_add",
+            rpc_id=1,
+            is_notification=False,
+        )
+
         result = await async_consumer_with_methods._execute_called_method(
-            method, params
+            method, params, context
         )
 
         assert result == 10
@@ -55,15 +72,23 @@ class TestAsyncExecuteCalledMethod:
     async def test_execute_injects_consumer_for_kwargs(
         self, async_consumer_with_methods
     ):
-        """Should inject consumer when async method accepts **kwargs."""
+        """Should inject consumer when async method accepts RpcContext."""
         registry = get_registry()
         method = registry.get_method(
             async_consumer_with_methods.__class__, "async_echo"
         )
         params = {"message": "test"}
 
+        # Create context
+        context = RpcContext(
+            consumer=async_consumer_with_methods,
+            method_name="async_echo",
+            rpc_id=1,
+            is_notification=False,
+        )
+
         result = await async_consumer_with_methods._execute_called_method(
-            method, params
+            method, params, context
         )
 
         assert "consumer: True" in result
@@ -72,13 +97,21 @@ class TestAsyncExecuteCalledMethod:
     async def test_execute_without_consumer_injection(
         self, async_consumer_with_methods
     ):
-        """Should not inject consumer when async method doesn't accept **kwargs."""
+        """Should not inject consumer when async method doesn't accept RpcContext."""
         registry = get_registry()
         method = registry.get_method(async_consumer_with_methods.__class__, "async_add")
         params = {"a": 1, "b": 1}
 
+        # Create context (not used by async_add method)
+        context = RpcContext(
+            consumer=async_consumer_with_methods,
+            method_name="async_add",
+            rpc_id=1,
+            is_notification=False,
+        )
+
         result = await async_consumer_with_methods._execute_called_method(
-            method, params
+            method, params, context
         )
 
         assert result == 2
@@ -568,16 +601,15 @@ class TestDatabaseRpcMethod:
 
     @pytest.mark.asyncio
     async def test_database_rpc_method_with_consumer_injection(self):
-        """Should support consumer injection via **kwargs."""
+        """Should support consumer injection via RpcContext."""
 
         class TestConsumer(AsyncRpcBase):
             def __init__(self):
                 self.scope = {"type": "websocket"}
 
         @TestConsumer.database_rpc_method()
-        def method_with_consumer(**kwargs):
-            consumer = kwargs.get("consumer")
-            return f"consumer: {consumer is not None}"
+        def method_with_consumer(ctx: RpcContext):
+            return f"consumer: {ctx.consumer is not None}"
 
         consumer = TestConsumer()
         data = {"jsonrpc": "2.0", "method": "method_with_consumer", "id": 1}

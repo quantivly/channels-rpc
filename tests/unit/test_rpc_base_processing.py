@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from channels_rpc.context import RpcContext
 from channels_rpc.exceptions import JsonRpcErrorCode
 from channels_rpc.registry import get_registry
 from channels_rpc.rpc_base import RpcBase
@@ -79,7 +80,15 @@ class TestExecuteCalledMethod:
         method = registry.get_method(consumer_with_methods.__class__, "add")
         params = {"a": 5, "b": 3}
 
-        result = consumer_with_methods._execute_called_method(method, params)
+        # Create context (not used by add method)
+        context = RpcContext(
+            consumer=consumer_with_methods,
+            method_name="add",
+            rpc_id=1,
+            is_notification=False,
+        )
+
+        result = consumer_with_methods._execute_called_method(method, params, context)
 
         assert result == 8
 
@@ -89,27 +98,51 @@ class TestExecuteCalledMethod:
         method = registry.get_method(consumer_with_methods.__class__, "add")
         params = [7, 3]
 
-        result = consumer_with_methods._execute_called_method(method, params)
+        # Create context (not used by add method)
+        context = RpcContext(
+            consumer=consumer_with_methods,
+            method_name="add",
+            rpc_id=1,
+            is_notification=False,
+        )
+
+        result = consumer_with_methods._execute_called_method(method, params, context)
 
         assert result == 10
 
     def test_execute_injects_consumer_for_kwargs(self, consumer_with_methods):
-        """Should inject consumer when method accepts **kwargs."""
+        """Should inject consumer when method accepts RpcContext."""
         registry = get_registry()
         method = registry.get_method(consumer_with_methods.__class__, "echo")
         params = {"message": "test"}
 
-        result = consumer_with_methods._execute_called_method(method, params)
+        # Create context
+        context = RpcContext(
+            consumer=consumer_with_methods,
+            method_name="echo",
+            rpc_id=1,
+            is_notification=False,
+        )
+
+        result = consumer_with_methods._execute_called_method(method, params, context)
 
         assert "consumer: True" in result
 
     def test_execute_without_consumer_injection(self, consumer_with_methods):
-        """Should not inject consumer when method doesn't accept **kwargs."""
+        """Should not inject consumer when method doesn't accept RpcContext."""
         registry = get_registry()
         method = registry.get_method(consumer_with_methods.__class__, "add")
         params = {"a": 1, "b": 1}
 
-        result = consumer_with_methods._execute_called_method(method, params)
+        # Create context (not used by add method)
+        context = RpcContext(
+            consumer=consumer_with_methods,
+            method_name="add",
+            rpc_id=1,
+            is_notification=False,
+        )
+
+        result = consumer_with_methods._execute_called_method(method, params, context)
 
         assert result == 2
 

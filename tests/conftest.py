@@ -15,6 +15,7 @@ import pytest  # noqa: E402
 from channels.testing import WebsocketCommunicator  # noqa: E402
 
 from channels_rpc.async_rpc_base import AsyncRpcBase  # noqa: E402
+from channels_rpc.context import RpcContext  # noqa: E402
 from channels_rpc.exceptions import JsonRpcErrorCode  # noqa: E402
 from channels_rpc.rpc_base import RpcBase  # noqa: E402
 
@@ -173,9 +174,8 @@ def consumer_with_methods(mock_websocket_scope):
         return a + b
 
     @TestConsumer.rpc_method()
-    def echo(message: str, **kwargs) -> str:
-        consumer = kwargs.get("consumer")
-        return f"Echo: {message} (consumer: {consumer is not None})"
+    def echo(ctx: RpcContext, message: str) -> str:
+        return f"Echo: {message} (consumer: {ctx.consumer is not None})"
 
     @TestConsumer.rpc_method(websocket=True, http=False)
     def websocket_only() -> str:
@@ -204,9 +204,8 @@ def async_consumer_with_methods(mock_websocket_scope):
         return a + b
 
     @TestAsyncConsumer.rpc_method()
-    async def async_echo(message: str, **kwargs) -> str:
-        consumer = kwargs.get("consumer")
-        return f"Echo: {message} (consumer: {consumer is not None})"
+    async def async_echo(ctx: RpcContext, message: str) -> str:
+        return f"Echo: {message} (consumer: {ctx.consumer is not None})"
 
     @TestAsyncConsumer.rpc_notification()
     async def async_notify(event: str) -> None:

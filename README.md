@@ -134,36 +134,75 @@ def list_users(limit: int = 10):
 
 **Important**: The decorated function should be synchronous (not async), as it will be automatically wrapped with `database_sync_to_async`.
 
-## [Sessions and other parameters from Consumer object](#consumer)
+## [Accessing Consumer and Request Context](#consumer)
 
-The original channel message - that can contain sessions (if activated with
-[http_user](https://channels.readthedocs.io/en/stable/generics.html#websockets))
-and other important info can be easily accessed by retrieving the `**kwargs`
-and get a parameter named _consumer_.
+RPC methods can access the consumer instance, request metadata, and Django Channels scope through the `RpcContext` parameter. When a method's first parameter (after `self` for bound methods) is typed as `RpcContext`, it will be automatically injected during execution.
 
 ```python
-MyJsonRpcConsumerTest.rpc_method()
-def json_rpc_method(param1, **kwargs):
-    consumer = kwargs["consumer"]
-    ##do something with consumer
+from channels_rpc import RpcContext
+
+@MyJsonRpcConsumer.rpc_method()
+def json_rpc_method(ctx: RpcContext, param1: str):
+    # Access the consumer instance
+    consumer = ctx.consumer
+
+    # Access Django Channels scope (sessions, user, etc.)
+    session = ctx.scope.get("session", {})
+
+    # Access request metadata
+    method_name = ctx.method_name  # "json_rpc_method"
+    rpc_id = ctx.rpc_id  # Request ID from JSON-RPC call
+    is_notification = ctx.is_notification  # False for methods, True for notifications
+
+    # Do something with the context
+    return f"Hello {param1}"
 ```
 
-Example:
+**Complete Example:**
 
 ```python
-class MyJsonRpcConsumerTest(JsonRpcConsumer):
+from channels_rpc import JsonRpcWebsocketConsumer, RpcContext
+
+class MyJsonRpcConsumer(JsonRpcWebsocketConsumer):
     # Set to True to automatically port users from HTTP cookies
-    # (you don't need channel_session_user, this implies it) # https://channels.readthedocs.io/en/stable/generics.html#websockets  http_user = True
+    # (you don't need channel_session_user, this implies it)
+    # https://channels.readthedocs.io/en/stable/generics.html#websockets
+    http_user = True
 
-....
+@MyJsonRpcConsumer.rpc_method()
+def ping(ctx: RpcContext):
+    # Access session through context
+    ctx.scope["session"]["test"] = True
 
-@MyJsonRpcConsumerTest.rpc_method()
-def ping(**kwargs):
-    consumer = kwargs["consumer"]
-    consumer.scope["session"]["test"] = True
+    # Log the request
+    print(f"Ping called with ID {ctx.rpc_id}")
+
     return "pong"
 
+@MyJsonRpcConsumer.rpc_method()
+def get_user_info(ctx: RpcContext):
+    # Access authenticated user from scope
+    user = ctx.scope.get("user")
+    if user and user.is_authenticated:
+        return {
+            "username": user.username,
+            "email": user.email
+        }
+    return {"error": "Not authenticated"}
 ```
+
+**Available Context Attributes:**
+
+- `ctx.consumer`: The consumer instance handling the RPC request
+- `ctx.method_name`: Name of the RPC method being called
+- `ctx.rpc_id`: Request ID from the JSON-RPC call (None for notifications)
+- `ctx.is_notification`: Whether this is a notification (no response expected)
+- `ctx.scope`: Django Channels scope dict containing:
+  - `client`: (host, port) tuple
+  - `headers`: Request headers
+  - `cookies`: Request cookies
+  - `session`: Django session (if http_user enabled)
+  - `user`: Authenticated user (if http_user enabled)
 
 ## Testing
 
