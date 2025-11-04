@@ -345,8 +345,8 @@ class TestGetMethod:
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
 
-    def test_get_method_respects_websocket_flag(self, consumer_with_methods):
-        """Should check websocket flag in method options."""
+    def test_get_method_allows_websocket_enabled(self, consumer_with_methods):
+        """Should allow method with websocket=True on websocket connection."""
         # websocket_only method should work with websocket scope
         consumer_with_methods.scope = {"type": "websocket"}
         data = {"jsonrpc": "2.0", "method": "websocket_only", "id": 1}
@@ -354,29 +354,11 @@ class TestGetMethod:
         method = consumer_with_methods._get_method(data, is_notification=False)
         assert method.__name__ == "websocket_only"
 
-    def test_get_method_rejects_http_only_on_websocket(self, consumer_with_methods):
-        """Should reject http-only method on websocket."""
+    def test_get_method_rejects_websocket_disabled(self, consumer_with_methods):
+        """Should reject method with websocket=False on websocket connection."""
+        # Method with websocket=False should not be found on websocket
         consumer_with_methods.scope = {"type": "websocket"}
-        data = {"jsonrpc": "2.0", "method": "http_only", "id": 1}
-
-        with pytest.raises(JsonRpcError) as exc_info:
-            consumer_with_methods._get_method(data, is_notification=False)
-
-        assert exc_info.value.code == JsonRpcErrorCode.METHOD_NOT_FOUND
-
-    def test_get_method_respects_http_flag(self, consumer_with_methods):
-        """Should check http flag in method options."""
-        # http_only method should work with http scope
-        consumer_with_methods.scope = {"type": "http"}
-        data = {"jsonrpc": "2.0", "method": "http_only", "id": 1}
-
-        method = consumer_with_methods._get_method(data, is_notification=False)
-        assert method.__name__ == "http_only"
-
-    def test_get_method_rejects_websocket_only_on_http(self, consumer_with_methods):
-        """Should reject websocket-only method on http."""
-        consumer_with_methods.scope = {"type": "http"}
-        data = {"jsonrpc": "2.0", "method": "websocket_only", "id": 1}
+        data = {"jsonrpc": "2.0", "method": "no_websocket", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
             consumer_with_methods._get_method(data, is_notification=False)

@@ -113,7 +113,7 @@ class MockRpcConsumer(RpcBase):
 
     def encode_json(self, data):
         """Mock JSON encoding."""
-        import json  # noqa: PLC0415
+        import json
 
         return json.dumps(data)
 
@@ -135,7 +135,7 @@ class MockAsyncRpcConsumer(AsyncRpcBase):
 
     def encode_json(self, data):
         """Mock JSON encoding."""
-        import json  # noqa: PLC0415
+        import json
 
         return json.dumps(data)
 
@@ -177,13 +177,13 @@ def consumer_with_methods(mock_websocket_scope):
     def echo(ctx: RpcContext, message: str) -> str:
         return f"Echo: {message} (consumer: {ctx.consumer is not None})"
 
-    @TestConsumer.rpc_method(websocket=True, http=False)
+    @TestConsumer.rpc_method(websocket=True)
     def websocket_only() -> str:
         return "websocket"
 
-    @TestConsumer.rpc_method(http=True, websocket=False)
-    def http_only() -> str:
-        return "http"
+    @TestConsumer.rpc_method(websocket=False)
+    def no_websocket() -> str:
+        return "disabled"
 
     @TestConsumer.rpc_notification()
     def notify_event(event: str) -> None:

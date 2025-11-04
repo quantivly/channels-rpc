@@ -54,28 +54,38 @@ def list_users(limit: int = 10):
     return [{"id": i, "username": f"user_{i}"} for i in range(1, limit + 1)]
 
 
-# Example 3: Method with consumer access
+# Example 3: Method with consumer context access
 @MyConsumer.database_rpc_method()
-def get_current_user(**kwargs):
+def get_current_user(ctx):
     """Get current user from consumer context.
 
-    The **kwargs parameter allows access to the consumer instance.
+    Uses RpcContext parameter to access the consumer instance and scope.
+    This is the modern way to access consumer context (replaces **kwargs).
     """
-    consumer = kwargs.get("consumer")
-    if consumer:
-        # Access consumer scope for session data, etc.
-        session = consumer.scope.get("session", {})
-        user_id = session.get("user_id")
+    from channels_rpc import RpcContext
 
-        # This would be actual Django ORM code:
-        # from myapp.models import User
-        # user = User.objects.get(id=user_id)
-        # return {"id": user.id, "username": user.username}
+    # Type hint for IDE support (optional, can also be in function signature)
+    ctx: RpcContext
 
-        # For this example, we'll return mock data
-        return {"id": user_id, "username": f"user_{user_id}"}
+    # Access consumer scope for session data, authenticated user, etc.
+    session = ctx.scope.get("session", {})
+    user_id = session.get("user_id")
 
-    return {"error": "No consumer context"}
+    # Or access the authenticated user directly
+    user = ctx.scope.get("user")
+
+    # This would be actual Django ORM code:
+    # from myapp.models import User
+    # if user and user.is_authenticated:
+    #     db_user = User.objects.get(id=user.id)
+    #     return {"id": db_user.id, "username": db_user.username}
+
+    # For this example, we'll return mock data
+    return (
+        {"id": user_id, "username": f"user_{user_id}"}
+        if user_id
+        else {"error": "Not authenticated"}
+    )
 
 
 # Example 4: Complex query method

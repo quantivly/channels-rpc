@@ -11,7 +11,14 @@
 - ✅ **Performance** - Optimized with cached introspection (31x faster method execution)
 - ✅ **WebSocket only** - Focused on real-time bidirectional communication (HTTP removed in 1.0.0)
 - ✅ **Easy integration** - Simple decorator-based API
-- ✅ **Well tested** - 244 tests with 83% coverage
+- ✅ **Django settings** - Runtime configuration via Django settings (new in 1.0.0)
+- ✅ **Lifecycle signals** - Monitor RPC calls with Django signals (new in 1.0.0)
+- ✅ **Middleware support** - Extensible middleware pipeline for cross-cutting concerns (new in 1.0.0)
+- ✅ **Atomic transactions** - Built-in transaction support for database methods (new in 1.0.0)
+- ✅ **Custom serialization** - Support for custom JSON encoders (new in 1.0.0)
+- ✅ **Permission control** - Decorator-based authorization with Django permissions (new in 1.0.0)
+- ✅ **API introspection** - Discover methods, signatures, and documentation at runtime (new in 1.0.0)
+- ✅ **Well tested** - 363 tests with 88% coverage
 
 ## JSON-RPC 2.0 Compliance
 
@@ -86,9 +93,28 @@ Standard JSON-RPC 2.0 error codes (defined in `channels_rpc/exceptions.py`):
 
 Server-defined error codes (-32099 to -32000):
 
+**Client Errors (4xx-style) - Request should be fixed:**
+
 | Code | Constant | Meaning |
 |------|----------|---------|
-| -32000 | `GENERIC_APPLICATION_ERROR` | Application-level error |
+| -32002 | `VALIDATION_ERROR` | Invalid input data (new in 1.0.0) |
+| -32003 | `RESOURCE_NOT_FOUND` | Requested resource doesn't exist (new in 1.0.0) |
+| -32004 | `PERMISSION_DENIED` | Authorization failure (new in 1.0.0) |
+| -32005 | `CONFLICT` | State conflict (new in 1.0.0) |
+| -32006 | `RATE_LIMIT_EXCEEDED` | Too many requests (new in 1.0.0) |
+
+**Server Errors (5xx-style) - Retryable:**
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| -32010 | `DATABASE_ERROR` | Transient database failure (new in 1.0.0) |
+| -32011 | `EXTERNAL_SERVICE_ERROR` | External dependency failed (new in 1.0.0) |
+
+**Legacy/Generic:**
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| -32000 | `GENERIC_APPLICATION_ERROR` | Generic application error (deprecated, use specific codes) |
 | -32001 | `REQUEST_TOO_LARGE` | Request exceeds size limits |
 | -32701 | `PARSE_RESULT_ERROR` | Error serializing result |
 
@@ -318,7 +344,7 @@ See [here](http://channels.readthedocs.io/en/stable/testing.html)
 
 ## Logging Configuration
 
-channels-rpc uses Python's logging module with the logger name `"django.channels.rpc"`. Configure it in your Django settings:
+channels-rpc uses Python's logging module with the logger name `"channels_rpc"`. Configure it in your Django settings:
 
 ```python
 # settings.py
@@ -338,7 +364,7 @@ LOGGING = {
         },
     },
     'loggers': {
-        'django.channels.rpc': {
+        'channels_rpc': {
             'handlers': ['console'],
             'level': 'INFO',  # Use 'DEBUG' for detailed RPC call logging
             'propagate': False,
@@ -421,35 +447,315 @@ def my_method(value):
     return value * 2
 ```
 
+## Configuration
+
+Configure channels-rpc via Django settings under the `CHANNELS_RPC` key:
+
+```python
+# settings.py
+CHANNELS_RPC = {
+    # Size limits for DoS protection (all optional, defaults shown)
+    'MAX_MESSAGE_SIZE': 10 * 1024 * 1024,  # 10MB
+    'MAX_ARRAY_LENGTH': 10000,
+    'MAX_STRING_LENGTH': 1024 * 1024,  # 1MB
+    'MAX_NESTING_DEPTH': 20,
+    'MAX_METHOD_NAME_LENGTH': 256,
+
+    # Logging configuration
+    'LOG_RPC_PARAMS': False,  # Set True only in development (may expose PII)
+    'SANITIZE_ERRORS': True,  # Always sanitize errors in responses
+}
+```
+
+Access configuration programmatically:
+
+```python
+from channels_rpc.config import get_config
+
+config = get_config()
+print(config.limits.max_message_size)  # 10485760
+```
+
+## Middleware
+
+Middleware provides a way to add cross-cutting concerns to RPC request/response handling:
+
+```python
+from channels_rpc import AsyncJsonRpcWebsocketConsumer
+
+class LoggingMiddleware:
+    def process_request(self, data, consumer):
+        print(f"RPC call: {data.get('method')}")
+        return data
+
+    def process_response(self, response, consumer):
+        print(f"RPC response: {response.get('id')}")
+        return response
+
+class MyConsumer(AsyncJsonRpcWebsocketConsumer):
+    # Middleware applied in order
+    middleware = [
+        LoggingMiddleware(),
+        # Add more middleware...
+    ]
+```
+
+**Built-in Middleware** (in `channels_rpc.middleware`):
+- `RateLimitMiddleware` - Per-method rate limiting
+- `AuthenticationMiddleware` - Require authentication
+- `LoggingMiddleware` - Log all RPC calls
+- `CachingMiddleware` - Cache method responses
+- `CompressionMiddleware` - Compress large responses
+- `RequestIDMiddleware` - Track requests with unique IDs
+
+## Signals
+
+Monitor RPC lifecycle with Django signals:
+
+```python
+from channels_rpc.signals import rpc_method_started, rpc_method_completed, rpc_method_failed
+import logging
+
+logger = logging.getLogger(__name__)
+
+def log_rpc_call(sender, method_name, duration, **kwargs):
+    logger.info(f"RPC {method_name} completed in {duration:.3f}s")
+
+def alert_on_error(sender, method_name, error, **kwargs):
+    logger.error(f"RPC {method_name} failed: {error}")
+
+rpc_method_completed.connect(log_rpc_call)
+rpc_method_failed.connect(alert_on_error)
+```
+
+**Available signals:**
+- `rpc_method_started` - Method execution starts
+- `rpc_method_completed` - Method completes successfully
+- `rpc_method_failed` - Method raises error
+- `rpc_client_connected` - WebSocket client connects
+- `rpc_client_disconnected` - WebSocket client disconnects
+
+## Permission-Based Access Control
+
+Restrict RPC methods with Django permissions:
+
+```python
+from channels_rpc import AsyncJsonRpcWebsocketConsumer, RpcContext
+from channels_rpc.decorators import permission_required
+
+class MyConsumer(AsyncJsonRpcWebsocketConsumer):
+    pass
+
+@MyConsumer.rpc_method()
+@permission_required('myapp.can_delete_users')
+async def delete_user(ctx: RpcContext, user_id: int):
+    # Only users with permission can call this
+    User.objects.get(id=user_id).delete()
+    return {'deleted': True}
+
+@MyConsumer.rpc_method()
+@permission_required('myapp.view_reports', 'myapp.export_data')
+async def export_report(ctx: RpcContext, report_id: int):
+    # User must have BOTH permissions
+    return generate_report(report_id)
+```
+
+**Security Note:** Unauthorized calls return `METHOD_NOT_FOUND` (not auth error) to prevent method enumeration.
+
+## Custom JSON Encoder
+
+Serialize custom types (datetime, Decimal, dataclasses):
+
+```python
+import json
+from datetime import datetime
+from decimal import Decimal
+from channels_rpc import AsyncJsonRpcWebsocketConsumer
+
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+class MyConsumer(AsyncJsonRpcWebsocketConsumer):
+    json_encoder_class = CustomEncoder
+
+@MyConsumer.rpc_method()
+async def get_data():
+    return {
+        'timestamp': datetime.now(),  # Serialized as ISO string
+        'amount': Decimal('123.45'),  # Serialized as float
+    }
+```
+
+## API Introspection
+
+Discover available methods and generate documentation:
+
+```python
+# List all methods
+methods = MyConsumer.get_rpc_methods()
+# ['add', 'subtract', 'get_user']
+
+# Get detailed method info
+info = MyConsumer.get_method_info('get_user')
+# MethodInfo(
+#     name='get_user',
+#     signature='(ctx: RpcContext, user_id: int) -> dict',
+#     docstring='Get user by ID...',
+#     accepts_context=True,
+#     transport_options={'websocket': True}
+# )
+
+# Generate complete API description (OpenRPC-compatible)
+api_doc = MyConsumer.describe_api()
+# {
+#     'methods': [...],
+#     'notifications': [...],
+#     'consumer_class': 'MyConsumer'
+# }
+```
+
 ## What's New in 1.0.0
+
+### New Features
+
+**🎯 Django Settings Integration**
+- Configure size limits, logging, and behavior via `CHANNELS_RPC` Django setting
+- Runtime configuration without code changes
+- See [Configuration](#configuration) section
+
+**📡 Lifecycle Signals**
+- Monitor RPC calls with 5 Django signals: `rpc_method_started`, `rpc_method_completed`, `rpc_method_failed`, `rpc_client_connected`, `rpc_client_disconnected`
+- Integrate with APM tools (DataDog, New Relic, etc.)
+- Track performance metrics and errors
+- See [Signals](#signals) section
+
+**🔌 Middleware Support**
+- Extensible middleware pipeline for cross-cutting concerns
+- Built-in middleware: Rate limiting, auth, logging, caching, compression, request ID tracking
+- Custom middleware support via `RpcMiddleware` protocol
+- See [Middleware](#middleware) section
+
+**💾 Atomic Transaction Support**
+- `@database_rpc_method(atomic=True)` for automatic transaction management
+- Specify database with `using` parameter for multi-database setups
+- Ensures data integrity for multi-step database operations
+- See [Database Access](#database-access) section
+
+**🔧 Custom JSON Encoder**
+- Support for custom JSON encoders (datetime, Decimal, dataclasses, etc.)
+- Set `json_encoder_class` attribute on consumer
+- Automatic fallback to str() for non-serializable objects
+
+**🔐 Permission-Based Access Control**
+- `@permission_required()` decorator for Django permission integration
+- Automatic authorization checking before method execution
+- Security-first design (returns METHOD_NOT_FOUND to prevent enumeration)
+
+**🔍 API Introspection**
+- `get_method_info(method_name)` - Get detailed method metadata
+- `describe_api()` - Generate OpenRPC-compatible API descriptions
+- Runtime method discovery for documentation generation
+
+**📊 Enhanced Error Codes**
+- 7 new error codes for better client/server error distinction
+- Client errors (-32002 to -32006): VALIDATION_ERROR, RESOURCE_NOT_FOUND, PERMISSION_DENIED, CONFLICT, RATE_LIMIT_EXCEEDED
+- Server errors (-32010 to -32011): DATABASE_ERROR, EXTERNAL_SERVICE_ERROR
+- Error categorization utilities: `is_client_error()`, `is_server_error()`
 
 ### Performance Improvements
 
 - **31x faster method execution** - Cached introspection eliminates reflection overhead on every call
 - **Optimized logging** - Lazy evaluation prevents unnecessary string formatting
-- **Reduced code duplication** - Shared validation logic between sync/async implementations
+- **Reduced code duplication** - Eliminated 150+ lines of duplicate decorator code
+- **Pre-parse size validation** - Prevents DoS attacks by checking size before JSON parsing
 
 ### Type Safety
 
 - **Zero mypy errors** - Comprehensive type hints throughout
 - **Protocol classes** - Proper typing for Django Channels mixin methods
 - **IntEnum error codes** - Type-safe error code handling with IDE autocomplete
+- **RpcContext dataclass** - Type-safe context parameter
 
 ### Security Enhancements
 
-- **DoS protection** - Automatic request size validation
+- **DoS protection** - Pre-parse message size validation
 - **Sanitized error responses** - Never leak internal details to clients
-- **Specific exception handling** - No more generic exception catching
+- **Specific exception handling** - RuntimeError no longer masked (indicates bugs)
+- **Protocol compliance** - Fixed critical JSON-RPC 2.0 violations (null ID handling)
 
 ### Code Quality
 
-- **244 tests** with 83% coverage
+- **363 tests** with 88% coverage (+119 new tests)
 - **Pre-commit hooks** with mypy, ruff, black, isort
 - **Clean public API** - Explicit `__all__` exports
+- **Eliminated duplication** - Shared decorator logic in `decorators.py`
 
 ## Breaking Changes in 1.0.0
 
-### 1. Error Codes Now Use IntEnum
+### 1. HTTP Parameter Removed from Decorators
+
+The `http` parameter has been completely removed from all decorators.
+
+**Old:**
+```python
+@MyConsumer.rpc_method(websocket=True, http=False)
+def my_method():
+    ...
+```
+
+**New:**
+```python
+@MyConsumer.rpc_method(websocket=True)
+def my_method():
+    ...
+```
+
+**Migration:** Remove the `http` parameter from all decorator calls.
+
+### 2. Logger Name Changed
+
+The logger name changed from `"django.channels.rpc"` to `"channels_rpc"` to follow Django conventions.
+
+**Old Django settings:**
+```python
+LOGGING = {
+    'loggers': {
+        'django.channels.rpc': {  # Old name
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
+}
+```
+
+**New Django settings:**
+```python
+LOGGING = {
+    'loggers': {
+        'channels_rpc': {  # New name
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
+}
+```
+
+### 3. Null ID Now Requires Response
+
+Fixed JSON-RPC 2.0 compliance: `"id": null` now correctly requires a response (not treated as notification).
+
+**Behavior change:**
+- Notification: Request **WITHOUT** `id` field (no response)
+- Request with null ID: Request **WITH** `"id": null` (must receive response)
+
+This is a **protocol fix** - the previous behavior was non-compliant.
+
+### 4. Error Codes Now Use IntEnum
 
 **Old:**
 ```python
@@ -463,7 +769,28 @@ from channels_rpc import JsonRpcErrorCode
 error = JsonRpcError(rpc_id, JsonRpcErrorCode.INVALID_REQUEST)
 ```
 
-### 2. HTTP Transport Removed
+### 5. Consumer Context via RpcContext (Recommended)
+
+While `**kwargs` still works, the recommended approach is using `RpcContext`:
+
+**Old (still works but deprecated):**
+```python
+@MyConsumer.database_rpc_method()
+def get_user(**kwargs):
+    consumer = kwargs.get('consumer')
+    user = consumer.scope.get('user')
+```
+
+**New (recommended):**
+```python
+from channels_rpc import RpcContext
+
+@MyConsumer.database_rpc_method()
+def get_user(ctx: RpcContext):
+    user = ctx.scope.get('user')
+```
+
+### 6. HTTP Transport Removed
 
 The HTTP transport has been removed. This library now focuses exclusively on WebSocket transport.
 
@@ -477,14 +804,13 @@ The HTTP transport has been removed. This library now focuses exclusively on Web
 - Import `JsonRpcErrorCode` enum instead of individual constants
 - Update routing to use WebSocket endpoints
 
-### 3. Empty List Parameters
+### 7. Exception Handling Changed
 
-Empty list parameters now correctly return `[]` instead of `{}` (bug fix).
+`RuntimeError` is no longer caught as an application error (it indicates bugs).
 
-### 4. JsonRpcError Constructor
-
-The `rpc_id` parameter now accepts `str | int | None` (was `int`).
+**Impact:** `RuntimeError` exceptions will now be logged as internal errors instead of application errors.
+**Migration:** If your code intentionally raises `RuntimeError` for application logic, use `ValueError` or `TypeError` instead.
 
 ### Why These Changes
 
-These changes align with the actual usage pattern in QSpace server (the downstream consumer), improve type safety, and eliminate maintenance overhead while making the library more robust and performant.
+These changes improve protocol compliance, type safety, maintainability, and align with Django best practices. The library is now production-ready for high-scale deployments while eliminating technical debt.

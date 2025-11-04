@@ -117,7 +117,7 @@ def test_my_performance_metric(self):
     import logging
 
     # Reduce logging noise
-    logger = logging.getLogger("django.channels.rpc")
+    logger = logging.getLogger("channels_rpc")
     original_level = logger.level
     logger.setLevel(logging.WARNING)
 

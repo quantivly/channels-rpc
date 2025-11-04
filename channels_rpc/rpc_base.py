@@ -12,11 +12,9 @@ References
 
 from __future__ import annotations
 
-import functools
 import json
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from channels_rpc import logs
@@ -25,52 +23,13 @@ from channels_rpc.exceptions import (
     JsonRpcErrorCode,
     generate_error_response,
 )
+from channels_rpc.protocols import MethodInfo, RpcMethodWrapper
 from channels_rpc.utils import create_json_rpc_request, create_json_rpc_response
 
 if TYPE_CHECKING:
     from channels_rpc.context import RpcContext
 
-logger = logging.getLogger("django.channels.rpc")
-
-
-@dataclass
-class RpcMethodWrapper:
-    """Wrapper for RPC method with transport options.
-
-    Attributes
-    ----------
-    func : Callable
-        The actual RPC method function.
-    options : dict[str, bool]
-        Transport options (websocket, http).
-    name : str
-        Method name to register.
-    accepts_context : bool
-        Whether method accepts RpcContext as first parameter.
-    """
-
-    func: Callable[..., Any]
-    options: dict[str, bool]
-    name: str
-    accepts_context: bool
-
-    def __post_init__(self) -> None:
-        """Initialize wrapper attributes after dataclass init."""
-        # Set __name__ and __qualname__ to mimic the wrapped function
-        object.__setattr__(self, "__name__", getattr(self.func, "__name__", self.name))
-        object.__setattr__(
-            self, "__qualname__", getattr(self.func, "__qualname__", self.name)
-        )
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """Make the wrapper callable."""
-        return self.func(*args, **kwargs)
-
-    def __get__(self, obj: Any, objtype: Any = None) -> Callable[..., Any]:
-        """Support instance method binding."""
-        if obj is None:
-            return self
-        return functools.partial(self.__call__, obj)
+logger = logging.getLogger("channels_rpc")
 
 
 class RpcBase:
@@ -111,10 +70,20 @@ class RpcBase:
       Server error
       Reserved for implementation-defined server-errors. (@TODO)
 
+    Attributes
+    ----------
+    middleware : list[RpcMiddleware]
+        List of middleware instances to apply to RPC requests and responses.
+        Middleware is applied in order for requests, and in reverse order for
+        responses. See middleware module for details.
+
     References
     ----------
     - http://groups.google.com/group/json-rpc/web/json-rpc-2-0
     """
+
+    # Class-level middleware list (can be overridden by subclasses)
+    middleware: list[Any] = []
 
     if TYPE_CHECKING:
         # Type hints for methods provided by Channels consumer mixin
@@ -146,7 +115,6 @@ class RpcBase:
         method_name: str | None = None,
         *,
         websocket: bool = True,
-        http: bool = True,
     ) -> Callable:
         """A decorator for registering RPC methods.
 
@@ -156,61 +124,30 @@ class RpcBase:
             RPC method name for the function, by default None.
         websocket : bool, optional
             Whether WebSocket transport can use this function, by default True.
-        http : bool, optional
-            DEPRECATED: HTTP transport removed in 1.0.0. Parameter ignored.
 
         Returns
         -------
         Callable
             Decorated function.
-        """
-        import inspect  # noqa: PLC0415
-        import warnings  # noqa: PLC0415
 
-        if not http:
-            warnings.warn(
-                "The 'http' parameter is deprecated and ignored. "
-                "HTTP transport was removed in version 1.0.0.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        Notes
+        -----
+        .. versionchanged:: 1.0.0
+            Removed `http` parameter. HTTP transport is no longer supported.
+        """
+        from channels_rpc.decorators import create_rpc_method_wrapper
+        from channels_rpc.registry import get_registry
 
         def wrap(method: Callable) -> RpcMethodWrapper:
-            from channels_rpc.context import RpcContext  # noqa: PLC0415
-            from channels_rpc.registry import get_registry  # noqa: PLC0415
-
             name = method_name or method.__name__
 
-            # Check if first parameter is RpcContext
-            accepts_context = False
-            try:
-                sig = inspect.signature(method)
-                params = list(sig.parameters.values())
-                # Skip 'self' parameter if present (for methods vs free functions)
-                first_param_idx = 1 if (params and params[0].name == "self") else 0
-                if len(params) > first_param_idx:
-                    first_param = params[first_param_idx]
-                    if first_param.annotation is not inspect.Parameter.empty:
-                        # Check if annotation is RpcContext
-                        # (handles both direct type and string annotation
-                        # from __future__.annotations)
-                        annotation = first_param.annotation
-                        if (
-                            annotation is RpcContext
-                            or annotation == "RpcContext"
-                            or getattr(annotation, "__name__", "") == "RpcContext"
-                        ):
-                            accepts_context = True
-            except Exception:  # noqa: S110
-                # If inspection fails, assume no context
-                pass
-
-            wrapper = RpcMethodWrapper(
+            # Use shared decorator logic to create wrapper
+            wrapper = create_rpc_method_wrapper(
                 func=method,
-                options={"websocket": websocket, "http": http},
                 name=name,
-                accepts_context=accepts_context,
+                options={"websocket": websocket},
             )
+
             registry = get_registry()
             registry.register_method(cls, name, wrapper)
             return wrapper
@@ -273,7 +210,7 @@ class RpcBase:
                     method = getattr(MyConsumer, method_name)
                     assert method.__doc__, f"{method_name} is missing docstring"
         """
-        from channels_rpc.registry import get_registry  # noqa: PLC0415
+        from channels_rpc.registry import get_registry
 
         registry = get_registry()
         return registry.list_method_names(cls)
@@ -284,7 +221,6 @@ class RpcBase:
         notification_name: str | None = None,
         *,
         websocket: bool = True,
-        http: bool = True,
     ) -> Callable:
         """A decorator for registering RPC notifications.
 
@@ -294,61 +230,30 @@ class RpcBase:
             RPC name for the function, by default None.
         websocket : bool, optional
             Whether WebSocket transport can use this function, by default True.
-        http : bool, optional
-            DEPRECATED: HTTP transport removed in 1.0.0. Parameter ignored.
 
         Returns
         -------
         Callable
             Decorated function.
-        """
-        import inspect  # noqa: PLC0415
-        import warnings  # noqa: PLC0415
 
-        if not http:
-            warnings.warn(
-                "The 'http' parameter is deprecated and ignored. "
-                "HTTP transport was removed in version 1.0.0.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        Notes
+        -----
+        .. versionchanged:: 1.0.0
+            Removed `http` parameter. HTTP transport is no longer supported.
+        """
+        from channels_rpc.decorators import create_rpc_method_wrapper
+        from channels_rpc.registry import get_registry
 
         def wrap(method: Callable) -> RpcMethodWrapper:
-            from channels_rpc.context import RpcContext  # noqa: PLC0415
-            from channels_rpc.registry import get_registry  # noqa: PLC0415
-
             name = notification_name or method.__name__
 
-            # Check if first parameter is RpcContext
-            accepts_context = False
-            try:
-                sig = inspect.signature(method)
-                params = list(sig.parameters.values())
-                # Skip 'self' parameter if present (for methods vs free functions)
-                first_param_idx = 1 if (params and params[0].name == "self") else 0
-                if len(params) > first_param_idx:
-                    first_param = params[first_param_idx]
-                    if first_param.annotation is not inspect.Parameter.empty:
-                        # Check if annotation is RpcContext
-                        # (handles both direct type and string annotation
-                        # from __future__.annotations)
-                        annotation = first_param.annotation
-                        if (
-                            annotation is RpcContext
-                            or annotation == "RpcContext"
-                            or getattr(annotation, "__name__", "") == "RpcContext"
-                        ):
-                            accepts_context = True
-            except Exception:  # noqa: S110
-                # If inspection fails, assume no context
-                pass
-
-            wrapper = RpcMethodWrapper(
+            # Use shared decorator logic to create wrapper
+            wrapper = create_rpc_method_wrapper(
                 func=method,
-                options={"websocket": websocket, "http": http},
                 name=name,
-                accepts_context=accepts_context,
+                options={"websocket": websocket},
             )
+
             registry = get_registry()
             registry.register_notification(cls, name, wrapper)
             return wrapper
@@ -420,10 +325,145 @@ class RpcBase:
                 def client_ready(self):
                     logger.info("Client is ready")
         """
-        from channels_rpc.registry import get_registry  # noqa: PLC0415
+        from channels_rpc.registry import get_registry
 
         registry = get_registry()
         return list(registry.get_notifications(cls).keys())
+
+    @classmethod
+    def get_method_info(cls, method_name: str) -> MethodInfo:
+        """Get detailed information about a registered RPC method.
+
+        Parameters
+        ----------
+        method_name : str
+            Name of the RPC method.
+
+        Returns
+        -------
+        MethodInfo
+            Metadata about the method.
+
+        Raises
+        ------
+        KeyError
+            If method is not registered.
+
+        Examples
+        --------
+        >>> info = MyConsumer.get_method_info('get_user')
+        >>> print(info.signature)
+        (user_id: int) -> dict
+        >>> print(info.docstring)
+        Get user information by ID.
+        """
+        import inspect
+
+        from channels_rpc.protocols import MethodInfo
+        from channels_rpc.registry import get_registry
+
+        registry = get_registry()
+
+        # Check methods first, then notifications
+        methods = registry.get_methods(cls)
+        is_notification = False
+        if method_name in methods:
+            wrapper = methods[method_name]
+        else:
+            notifications = registry.get_notifications(cls)
+            if method_name in notifications:
+                wrapper = notifications[method_name]
+                is_notification = True
+            else:
+                msg = f"Method '{method_name}' not registered"
+                raise KeyError(msg)
+
+        # Extract metadata
+        func = wrapper.func if isinstance(wrapper, RpcMethodWrapper) else wrapper
+        sig = inspect.signature(func)
+
+        return MethodInfo(
+            name=method_name,
+            func=func,
+            signature=str(sig),
+            docstring=func.__doc__,
+            accepts_context=(
+                wrapper.accepts_context
+                if isinstance(wrapper, RpcMethodWrapper)
+                else False
+            ),
+            transport_options=(
+                wrapper.options if isinstance(wrapper, RpcMethodWrapper) else {}
+            ),
+            is_notification=is_notification,
+        )
+
+    @classmethod
+    def describe_api(cls) -> dict[str, Any]:
+        """Generate a JSON-serializable API description.
+
+        Returns
+        -------
+        dict[str, Any]
+            API description including all methods and notifications.
+
+        Examples
+        --------
+        >>> api_desc = MyConsumer.describe_api()
+        >>> print(json.dumps(api_desc, indent=2))
+        {
+          "methods": [
+            {
+              "name": "get_user",
+              "signature": "(user_id: int) -> dict",
+              "doc": "Get user information",
+              "accepts_context": true
+            }
+          ],
+          "notifications": [...]
+        }
+        """
+        methods_list = []
+        for method_name in cls.get_rpc_methods():
+            try:
+                info = cls.get_method_info(method_name)
+                methods_list.append(
+                    {
+                        "name": info.name,
+                        "signature": info.signature,
+                        "doc": info.docstring,
+                        "accepts_context": info.accepts_context,
+                        "transports": [
+                            k for k, v in info.transport_options.items() if v
+                        ],
+                    }
+                )
+            except Exception as e:
+                logger.warning("Failed to introspect method %s: %s", method_name, e)
+
+        notifications_list = []
+        for notif_name in cls.get_rpc_notifications():
+            try:
+                info = cls.get_method_info(notif_name)
+                notifications_list.append(
+                    {
+                        "name": info.name,
+                        "signature": info.signature,
+                        "doc": info.docstring,
+                        "accepts_context": info.accepts_context,
+                    }
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to introspect notification %s: %s", notif_name, e
+                )
+
+        return {
+            "jsonrpc": "2.0",
+            "consumer": cls.__name__,
+            "methods": methods_list,
+            "notifications": notifications_list,
+        }
 
     def validate_scope(self) -> None:
         """Validate and sanitize scope data.
@@ -483,7 +523,7 @@ class RpcBase:
         if "client" in self.scope:
             client = self.scope["client"]
             # Client tuple should be (host, port)
-            if not isinstance(client, (list, tuple)) or len(client) != 2:
+            if not isinstance(client, list | tuple) or len(client) != 2:
                 logger.warning("Malformed client in scope: %s", client)
 
     def notify_channel(self, method: str, params: dict[str, Any]) -> None:
@@ -544,19 +584,37 @@ class RpcBase:
             Invalid call data.
         """
         logger.debug("Validating call data: %s", data)
-        rpc_id = data.get("id")
-        bad_json_rpc_version = data.get("jsonrpc") != "2.0"
-        no_method = "method" not in data
-        bad_method = not isinstance(data.get("method"), str)
 
-        # JSON-RPC 2.0 requires exact version match
+        # First, try to extract and validate ID (used in all error responses)
+        if "id" in data:
+            rpc_id = data["id"]
+            # Validate ID type per JSON-RPC 2.0 spec
+            if rpc_id is not None and not isinstance(rpc_id, str | int | float):
+                id_type = type(rpc_id).__name__
+                raise JsonRpcError(
+                    None,  # Invalid ID, so don't use it in error
+                    JsonRpcErrorCode.INVALID_REQUEST,
+                    data={
+                        "field": "id",
+                        "error": f"must be string, number, or null, got {id_type}",
+                    },
+                )
+        else:
+            rpc_id = None
+
+        # Validate JSON-RPC version
+        bad_json_rpc_version = data.get("jsonrpc") != "2.0"
         if bad_json_rpc_version:
             logger.warning(logs.INVALID_JSON_RPC_VERSION, data.get("jsonrpc"))
             raise JsonRpcError(
-                rpc_id,
+                rpc_id,  # Use validated ID (or None if not present)
                 JsonRpcErrorCode.INVALID_REQUEST,
                 data={"version": data.get("jsonrpc")},
             )
+
+        # Validate method field
+        no_method = "method" not in data
+        bad_method = not isinstance(data.get("method"), str)
 
         if no_method:
             raise JsonRpcError(
@@ -574,7 +632,7 @@ class RpcBase:
             )
 
         # Check size limits
-        from channels_rpc.limits import check_size_limits  # noqa: PLC0415
+        from channels_rpc.limits import check_size_limits
 
         check_size_limits(data, rpc_id)
 
@@ -602,7 +660,7 @@ class RpcBase:
         JsonRpcError
             RPC method not supported.
         """
-        from channels_rpc.registry import get_registry  # noqa: PLC0415
+        from channels_rpc.registry import get_registry
 
         self._validate_call(data)
         rpc_id = data.get("id")
@@ -625,7 +683,9 @@ class RpcBase:
         protocol = self.scope["type"]
         # Handle both RpcMethodWrapper and raw Callable (backward compatibility)
         if isinstance(method, RpcMethodWrapper):
-            if not method.options[protocol]:
+            # Check if method is enabled for this protocol
+            # Default to True for unknown protocols for backward compatibility
+            if not method.options.get(protocol, True):
                 raise JsonRpcError(rpc_id, JsonRpcErrorCode.METHOD_NOT_FOUND)
             logger.debug("Method found: %s", method.func.__name__)
         else:
@@ -668,7 +728,7 @@ class RpcBase:
             return {}
 
         # Validate type
-        if not isinstance(params, (list, dict)):
+        if not isinstance(params, list | dict):
             rpc_id = data.get("id")
             raise JsonRpcError(
                 rpc_id,
@@ -718,7 +778,7 @@ class RpcBase:
         dict[str, Any] | None
             Result of the remote procedure call.
         """
-        from channels_rpc.context import RpcContext  # noqa: PLC0415
+        from channels_rpc.context import RpcContext
 
         method = self._get_method(data, is_notification=is_notification)
         params = self._get_params(data)
@@ -763,7 +823,7 @@ class RpcBase:
         tuple[Any, bool]
             Result and whether it's a notification.
         """
-        from channels_rpc.validation import validate_rpc_data  # noqa: PLC0415
+        from channels_rpc.validation import validate_rpc_data
 
         logger.debug("Intercepting call: %s", data)
 
@@ -775,9 +835,12 @@ class RpcBase:
             return error or data, is_response
 
         # Must be a JSON-RPC 2.0 request (or attempt)
-        rpc_id = data.get("id")
+        # Per JSON-RPC 2.0 spec:
+        # - Notification: request WITHOUT "id" field
+        # - Request with null ID: request WITH "id": null (must receive response)
         method_name = data.get("method")
-        is_notification = rpc_id is None
+        is_notification = "id" not in data
+        rpc_id = data.get("id") if not is_notification else None
 
         logger.debug(logs.CALL_INTERCEPTED, data)
 
@@ -786,23 +849,139 @@ class RpcBase:
         else:
             logger.info(logs.RPC_NOTIFICATION_START, method_name)
 
+        # Emit signal for method start
+        import time
+
+        from channels_rpc.signals import (
+            rpc_method_failed,
+            rpc_method_started,
+        )
+
+        start_time = time.time()
+        params = data.get("params", {})
+
+        rpc_method_started.send(
+            sender=self.__class__,
+            consumer=self,
+            method_name=method_name,
+            params=params,
+            rpc_id=rpc_id,
+        )
+
+        # Apply request middleware
+        for mw in self.middleware:
+            try:
+                processed_data = mw.process_request(data, self)
+                if processed_data is None:
+                    # Middleware rejected request
+                    logger.warning(
+                        "Request rejected by middleware: %s", mw.__class__.__name__
+                    )
+                    return (
+                        generate_error_response(
+                            rpc_id=rpc_id,
+                            code=JsonRpcErrorCode.INVALID_REQUEST,
+                            message="Request rejected by middleware",
+                        ),
+                        False,
+                    )
+                data = processed_data
+            except JsonRpcError:
+                # Let JSON-RPC errors propagate
+                raise
+            except Exception as e:
+                # Catch middleware errors and convert to internal error
+                logger.exception(
+                    "Middleware error in process_request: %s", mw.__class__.__name__
+                )
+                duration = time.time() - start_time
+                rpc_method_failed.send(
+                    sender=self.__class__,
+                    consumer=self,
+                    method_name=method_name,
+                    error=e,
+                    rpc_id=rpc_id,
+                    duration=duration,
+                )
+                result = generate_error_response(
+                    rpc_id=rpc_id,
+                    code=JsonRpcErrorCode.INTERNAL_ERROR,
+                    message="Middleware error occurred",
+                    data=None,
+                )
+                return result, is_notification
+
         try:
             result = self._process_call(data, is_notification=is_notification)
+
+            # Apply response middleware (in reverse order, only for non-notifications with results)
+            if not is_notification and result is not None:
+                for mw in reversed(self.middleware):
+                    try:
+                        result = mw.process_response(result, self)
+                    except Exception:
+                        # Log middleware errors but continue with original response
+                        logger.exception(
+                            "Middleware error in process_response: %s",
+                            mw.__class__.__name__,
+                        )
+
+            # Emit signal for successful completion
+            from channels_rpc.signals import rpc_method_completed
+
+            duration = time.time() - start_time
+            rpc_method_completed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                result=result,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
+
         except JsonRpcError as e:
             # Re-raise JSON-RPC errors as-is
+            duration = time.time() - start_time
+            rpc_method_failed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                error=e,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
             result = e.as_dict()
-        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
-            # Expected application-level errors
+        except (ValueError, TypeError, KeyError, AttributeError) as e:
+            # Expected application-level errors (domain logic errors)
+            # Note: RuntimeError intentionally NOT caught here - it indicates bugs
             logger.info("Application error in RPC method: %s", e)
+            duration = time.time() - start_time
+            rpc_method_failed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                error=e,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
             result = generate_error_response(
                 rpc_id=rpc_id,
                 code=JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
                 message="Application error occurred",
                 data=None,  # Never leak internal details
             )
-        except Exception:
+        except Exception as e:
             # Unexpected errors - these indicate bugs
             logger.exception("Unexpected error processing RPC call")
+            duration = time.time() - start_time
+            rpc_method_failed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                error=e,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
             result = generate_error_response(
                 rpc_id=rpc_id,
                 code=JsonRpcErrorCode.INTERNAL_ERROR,

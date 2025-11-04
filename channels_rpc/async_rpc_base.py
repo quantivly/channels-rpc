@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from channels.db import database_sync_to_async
+from django.db import transaction
 
 from channels_rpc import logs
 from channels_rpc.exceptions import (
@@ -19,7 +21,7 @@ from channels_rpc.utils import create_json_rpc_response
 if TYPE_CHECKING:
     from channels_rpc.context import RpcContext
 
-logger = logging.getLogger("django.channels.rpc")
+logger = logging.getLogger("channels_rpc")
 
 
 class AsyncRpcBase(RpcBase):
@@ -37,11 +39,16 @@ class AsyncRpcBase(RpcBase):
         method_name: str | None = None,
         *,
         websocket: bool = True,
+        atomic: bool = True,
+        using: str | None = None,
     ) -> Callable:
         """Register an async RPC method that needs database access.
 
         This decorator combines rpc_method() with database_sync_to_async(),
         allowing the method to safely access Django ORM from async context.
+        Optionally wraps the method in an atomic transaction.
+
+        .. versionadded:: 1.0.0
 
         Parameters
         ----------
@@ -49,6 +56,10 @@ class AsyncRpcBase(RpcBase):
             Custom name for the method. If None, uses function __name__.
         websocket : bool, optional
             Enable for WebSocket transport, by default True.
+        atomic : bool, optional
+            Wrap method in atomic transaction, by default True.
+        using : str | None, optional
+            Database alias to use, by default None (uses default database).
 
         Returns
         -------
@@ -57,52 +68,58 @@ class AsyncRpcBase(RpcBase):
 
         Examples
         --------
-        >>> @MyConsumer.database_rpc_method()
-        >>> def get_user(ctx: RpcContext, user_id: int) -> dict:
-        ...     # This can safely use Django ORM
-        ...     user = User.objects.get(id=user_id)
-        ...     return {"name": user.username, "email": user.email}
+        With automatic transaction management::
+
+            @MyConsumer.database_rpc_method()
+            def create_user(username: str):
+                user = User.objects.create(username=username)
+                Profile.objects.create(user=user)  # Atomic with user creation
+                return user.id
+
+        Without transaction (read-only)::
+
+            @MyConsumer.database_rpc_method(atomic=False)
+            def get_stats():
+                return User.objects.count()
+
+        Using specific database::
+
+            @MyConsumer.database_rpc_method(using='analytics')
+            def log_event(event_data: dict):
+                Event.objects.using('analytics').create(**event_data)
+
+        With consumer context::
+
+            @MyConsumer.database_rpc_method()
+            def get_user(ctx: RpcContext, user_id: int) -> dict:
+                # This can safely use Django ORM
+                user = User.objects.get(id=user_id)
+                return {"name": user.username, "email": user.email}
 
         Notes
         -----
         The decorated function should be synchronous (not async), as it will
-        be automatically wrapped with database_sync_to_async.
+        be automatically wrapped with database_sync_to_async. When atomic=True,
+        the function is wrapped with transaction.atomic() before being converted
+        to async, ensuring proper transaction management.
         """
 
         def decorator(func: Callable) -> Callable:
-            import inspect  # noqa: PLC0415
+            from channels_rpc.decorators import inspect_accepts_context
+            from channels_rpc.protocols import RpcMethodWrapper
+            from channels_rpc.registry import get_registry
 
-            from channels_rpc.context import RpcContext  # noqa: PLC0415
-            from channels_rpc.registry import get_registry  # noqa: PLC0415
-
-            # First, inspect the original sync function BEFORE wrapping
-            # Check if first parameter is RpcContext
+            # Inspect the original sync function BEFORE wrapping with database_sync_to_async
             name = method_name or func.__name__
-            accepts_context = False
-            try:
-                sig = inspect.signature(func)
-                params = list(sig.parameters.values())
-                # Skip 'self' parameter if present (for methods vs free functions)
-                first_param_idx = 1 if (params and params[0].name == "self") else 0
-                if len(params) > first_param_idx:
-                    first_param = params[first_param_idx]
-                    if first_param.annotation is not inspect.Parameter.empty:
-                        # Check if annotation is RpcContext
-                        # (handles both direct type and string annotation
-                        # from __future__.annotations)
-                        annotation = first_param.annotation
-                        if (
-                            annotation is RpcContext
-                            or annotation == "RpcContext"
-                            or getattr(annotation, "__name__", "") == "RpcContext"
-                        ):
-                            accepts_context = True
-            except Exception:  # noqa: S110
-                # If inspection fails, assume no context
-                pass
+            accepts_context = inspect_accepts_context(func)
 
-            # Now wrap with database_sync_to_async
-            async_func = database_sync_to_async(func)
+            # Wrap with transaction if requested (BEFORE database_sync_to_async)
+            wrapped_func = func
+            if atomic:
+                wrapped_func = transaction.atomic(using=using)(func)
+
+            # Then wrap with database_sync_to_async for Django ORM access
+            async_func = database_sync_to_async(wrapped_func)
 
             # Copy over function metadata
             async_func.__name__ = func.__name__
@@ -111,9 +128,10 @@ class AsyncRpcBase(RpcBase):
                 async_func.__doc__ = func.__doc__
 
             # Create RpcMethodWrapper directly without re-inspection
+            # (context inspection already done on sync function)
             wrapper = RpcMethodWrapper(
                 func=async_func,
-                options={"websocket": websocket, "http": True},
+                options={"websocket": websocket},
                 name=name,
                 accepts_context=accepts_context,
             )
@@ -171,7 +189,7 @@ class AsyncRpcBase(RpcBase):
         Any
             Result from the method.
         """
-        import asyncio  # noqa: PLC0415
+        import asyncio
 
         # Unwrap RpcMethodWrapper and get cached introspection result
         if isinstance(method, RpcMethodWrapper):
@@ -201,7 +219,7 @@ class AsyncRpcBase(RpcBase):
     async def _process_call(  # type: ignore[override]
         self, data: dict[str, Any], *, is_notification: bool = False
     ) -> dict[str, Any] | None:
-        from channels_rpc.context import RpcContext  # noqa: PLC0415
+        from channels_rpc.context import RpcContext
 
         method = self._get_method(data, is_notification=is_notification)
         params = self._get_params(data)
@@ -248,7 +266,7 @@ class AsyncRpcBase(RpcBase):
         tuple[Any, bool]
             Result and whether it's a notification.
         """
-        from channels_rpc.validation import validate_rpc_data  # noqa: PLC0415
+        from channels_rpc.validation import validate_rpc_data
 
         logger.debug("Intercepting call: %s", data)
 
@@ -263,9 +281,12 @@ class AsyncRpcBase(RpcBase):
         assert isinstance(data, dict)  # nosec B101 - Type assertion for mypy
 
         # Must be a JSON-RPC 2.0 request (or attempt)
-        rpc_id = data.get("id")
+        # Per JSON-RPC 2.0 spec:
+        # - Notification: request WITHOUT "id" field
+        # - Request with null ID: request WITH "id": null (must receive response)
         method_name = data.get("method")
-        is_notification = rpc_id is None
+        is_notification = "id" not in data
+        rpc_id = data.get("id") if not is_notification else None
 
         logger.debug(logs.CALL_INTERCEPTED, data)
 
@@ -274,23 +295,146 @@ class AsyncRpcBase(RpcBase):
         else:
             logger.info(logs.RPC_NOTIFICATION_START, method_name)
 
+        # Emit signal for method start
+        import time
+
+        from channels_rpc.signals import (
+            rpc_method_failed,
+            rpc_method_started,
+        )
+
+        start_time = time.time()
+        params = data.get("params", {})
+
+        rpc_method_started.send(
+            sender=self.__class__,
+            consumer=self,
+            method_name=method_name,
+            params=params,
+            rpc_id=rpc_id,
+        )
+
+        # Apply request middleware
+        for mw in self.middleware:
+            try:
+                processed_data = mw.process_request(data, self)
+                # Handle async middleware
+                if asyncio.iscoroutine(processed_data):
+                    processed_data = await processed_data
+                if processed_data is None:
+                    # Middleware rejected request
+                    logger.warning(
+                        "Request rejected by middleware: %s", mw.__class__.__name__
+                    )
+                    return (
+                        generate_error_response(
+                            rpc_id=rpc_id,
+                            code=JsonRpcErrorCode.INVALID_REQUEST,
+                            message="Request rejected by middleware",
+                        ),
+                        False,
+                    )
+                data = processed_data
+            except JsonRpcError:
+                # Let JSON-RPC errors propagate
+                raise
+            except Exception as e:
+                # Catch middleware errors and convert to internal error
+                logger.exception(
+                    "Middleware error in process_request: %s", mw.__class__.__name__
+                )
+                duration = time.time() - start_time
+                rpc_method_failed.send(
+                    sender=self.__class__,
+                    consumer=self,
+                    method_name=method_name,
+                    error=e,
+                    rpc_id=rpc_id,
+                    duration=duration,
+                )
+                result = generate_error_response(
+                    rpc_id=rpc_id,
+                    code=JsonRpcErrorCode.INTERNAL_ERROR,
+                    message="Middleware error occurred",
+                    data=None,
+                )
+                return result, is_notification
+
         try:
             result = await self._process_call(data, is_notification=is_notification)
+
+            # Apply response middleware (in reverse order, only for non-notifications with results)
+            if not is_notification and result is not None:
+                for mw in reversed(self.middleware):
+                    try:
+                        processed_result = mw.process_response(result, self)
+                        # Handle async middleware
+                        if asyncio.iscoroutine(processed_result):
+                            processed_result = await processed_result
+                        result = processed_result
+                    except Exception:
+                        # Log middleware errors but continue with original response
+                        logger.exception(
+                            "Middleware error in process_response: %s",
+                            mw.__class__.__name__,
+                        )
+
+            # Emit signal for successful completion
+            from channels_rpc.signals import rpc_method_completed
+
+            duration = time.time() - start_time
+            rpc_method_completed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                result=result,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
+
         except JsonRpcError as e:
             # Re-raise JSON-RPC errors as-is
+            duration = time.time() - start_time
+            rpc_method_failed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                error=e,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
             result = e.as_dict()
-        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
-            # Expected application-level errors
+        except (ValueError, TypeError, KeyError, AttributeError) as e:
+            # Expected application-level errors (domain logic errors)
+            # Note: RuntimeError intentionally NOT caught here - it indicates bugs
             logger.info("Application error in RPC method: %s", e)
+            duration = time.time() - start_time
+            rpc_method_failed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                error=e,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
             result = generate_error_response(
                 rpc_id=rpc_id,
                 code=JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
                 message="Application error occurred",
                 data=None,  # Never leak internal details
             )
-        except Exception:
+        except Exception as e:
             # Unexpected errors - these indicate bugs
             logger.exception("Unexpected error processing RPC call")
+            duration = time.time() - start_time
+            rpc_method_failed.send(
+                sender=self.__class__,
+                consumer=self,
+                method_name=method_name,
+                error=e,
+                rpc_id=rpc_id,
+                duration=duration,
+            )
             result = generate_error_response(
                 rpc_id=rpc_id,
                 code=JsonRpcErrorCode.INTERNAL_ERROR,

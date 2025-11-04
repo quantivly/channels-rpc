@@ -16,7 +16,7 @@ from channels_rpc.exceptions import (
     generate_error_response,
 )
 
-logger = logging.getLogger("django.channels.rpc")
+logger = logging.getLogger("channels_rpc")
 
 
 def validate_rpc_data(data: Any) -> tuple[dict[str, Any] | None, bool]:

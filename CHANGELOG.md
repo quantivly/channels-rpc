@@ -7,43 +7,163 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2025-11-04
 
-This is a major release representing a comprehensive code quality improvement effort focused on type safety, security, performance, and maintainability. The library is now production-ready with 100% type safety, robust security features, and significant performance optimizations.
+This is a major release representing a comprehensive refactoring and enhancement effort. The library is now production-ready with new features for monitoring, configuration, security, and extensibility while fixing critical protocol violations and eliminating technical debt.
 
 ### Breaking Changes
 
-#### HTTP Consumer Removed
-- **Removed HTTP consumer implementation**: The library now focuses exclusively on WebSocket-based JSON-RPC. The HTTP consumer had multiple bugs and was not being actively used.
-- **Impact**: If you were using `AsyncRpcHttpConsumer`, migrate to WebSocket-based communication using `AsyncJsonRpcWebsocketConsumer`.
+#### 1. HTTP Parameter Removed from Decorators
 
-#### Semantic Corrections
-- **Empty list parameter handling**: Empty list parameters now correctly return `[]` instead of `{}`. This fixes a semantic bug where `[] or {}` incorrectly evaluated to `{}`.
-- **JsonRpcError constructor signature**: The `rpc_id` parameter now correctly accepts `str | int | None` instead of just `int`.
+**Removed the `http` parameter** from `@rpc_method()`, `@rpc_notification()`, and `@database_rpc_method()` decorators.
 
-#### Error Response Security
-- **Error responses no longer leak internal details**: Generic exception messages are no longer exposed to clients. Only safe, sanitized error messages are returned.
-- **Impact**: If your client code was parsing internal error details from error responses, those details are no longer available.
+**Migration:**
+```python
+# Before
+@MyConsumer.rpc_method(websocket=True, http=False)
 
-#### Internal API Changes
-- **Internal methods prefixed with underscore**: Methods like `_validate_call()`, `_get_method()`, `_process_call()`, etc. are now clearly marked as internal API.
-- **Impact**: If you were overriding these methods, update your code to use the new names.
+# After
+@MyConsumer.rpc_method(websocket=True)
+```
 
-#### Strict JSON-RPC 2.0 Compliance
-- **Strict `jsonrpc` field validation**: All RPC requests must include `"jsonrpc": "2.0"`. Requests without this field or with incorrect version will be rejected.
-- **Removed batch call support**: Batch requests are explicitly not supported and will be rejected.
-- **Impact**: Ensure all RPC requests include the `jsonrpc` field.
+#### 2. Logger Name Changed
+
+**Changed logger name** from `"django.channels.rpc"` to `"channels_rpc"` to follow Django conventions.
+
+**Migration:** Update Django logging configuration:
+```python
+# Before
+LOGGING = {'loggers': {'django.channels.rpc': {...}}}
+
+# After
+LOGGING = {'loggers': {'channels_rpc': {...}}}
+```
+
+#### 3. JSON-RPC 2.0 Protocol Compliance Fixes
+
+**Fixed null ID handling** - `"id": null` now correctly requires a response (was incorrectly treated as notification).
+- **Notification**: Request WITHOUT `id` field
+- **Request with null ID**: Request WITH `"id": null` (must receive response)
+
+**Added ID type validation** - Request IDs must be string, number, or null (rejects objects, arrays, etc.)
+
+**Impact:** Clients sending `"id": null` will now receive responses. This fixes a critical protocol violation.
+
+#### 4. Exception Handling Changed
+
+**`RuntimeError` no longer caught** as application error - it now propagates to the generic Exception handler, indicating a bug.
+
+**Impact:** If your code raises `RuntimeError` for application logic, use `ValueError` or `TypeError` instead.
+
+#### 5. HTTP Consumer Removed
+
+**Removed HTTP consumer implementation** - library now focuses exclusively on WebSocket-based JSON-RPC.
+
+**Migration:** Use `AsyncJsonRpcWebsocketConsumer` instead of `AsyncRpcHttpConsumer`.
+
+#### 6. Empty List Parameters
+
+**Fixed bug** - Empty list parameters now correctly return `[]` instead of `{}`.
+
+#### 7. RpcContext Recommended Over **kwargs
+
+While `**kwargs` still works, **RpcContext is now the recommended approach** for accessing consumer context.
+
+**Migration:**
+```python
+# Before (still works)
+@MyConsumer.database_rpc_method()
+def my_method(**kwargs):
+    consumer = kwargs.get('consumer')
+
+# After (recommended)
+from channels_rpc import RpcContext
+
+@MyConsumer.database_rpc_method()
+def my_method(ctx: RpcContext):
+    consumer = ctx.consumer
+```
 
 ### Added
 
+#### Django Integration Features
+- **Django settings integration** (`config.py`, `apps.py`):
+  - Configure size limits via `CHANNELS_RPC` Django setting
+  - Runtime configuration without code changes
+  - `RpcConfig` and `RpcLimits` classes for programmatic access
+  - `ChannelsRpcConfig` AppConfig for Django app initialization
+- **Django signals for lifecycle monitoring** (`signals.py`):
+  - `rpc_method_started` - Emitted when method execution begins
+  - `rpc_method_completed` - Emitted on successful completion
+  - `rpc_method_failed` - Emitted when method raises error
+  - `rpc_client_connected` - Emitted on WebSocket connection
+  - `rpc_client_disconnected` - Emitted on disconnection
+  - Includes duration tracking and error details for APM integration
+
+#### Middleware System
+- **Extensible middleware pipeline** (`middleware.py`):
+  - `RpcMiddleware` protocol for custom middleware
+  - Process requests before execution and responses before transmission
+  - Support for both sync and async middleware
+- **Six built-in middleware classes**:
+  - `RateLimitMiddleware` - Per-method token bucket rate limiting
+  - `AuthenticationMiddleware` - Require authentication for all methods
+  - `LoggingMiddleware` - Structured logging of all RPC calls
+  - `CachingMiddleware` - Time-based response caching
+  - `CompressionMiddleware` - zstd compression for large responses
+  - `RequestIDMiddleware` - Unique ID tracking for request correlation
+
+#### Database Features
+- **Atomic transaction support** in `@database_rpc_method`:
+  - `atomic=True` (default) - Wrap in Django atomic transaction
+  - `using='db_alias'` - Specify which database to use
+  - Ensures data integrity for multi-step operations
+- **Enhanced error handling** for Django ORM exceptions
+
+#### Enhanced Error Codes
+- **Seven new server-defined error codes** for better error categorization:
+  - `-32002` `VALIDATION_ERROR` - Invalid input data (client error)
+  - `-32003` `RESOURCE_NOT_FOUND` - Resource doesn't exist (client error)
+  - `-32004` `PERMISSION_DENIED` - Authorization failure (client error)
+  - `-32005` `CONFLICT` - State conflict (client error)
+  - `-32006` `RATE_LIMIT_EXCEEDED` - Too many requests (client error)
+  - `-32010` `DATABASE_ERROR` - Transient database failure (server error)
+  - `-32011` `EXTERNAL_SERVICE_ERROR` - External dependency failed (server error)
+- **Error categorization utilities**:
+  - `JsonRpcErrorCode.is_client_error()` - Check if error is client-side
+  - `JsonRpcErrorCode.is_server_error()` - Check if error is server-side
+- **Deprecated** `GENERIC_APPLICATION_ERROR` (still works, use specific codes instead)
+
 #### Security Features
-- **DoS protection with size limits**: Comprehensive request validation to prevent denial-of-service attacks:
+- **Pre-parse size validation** - Check message size BEFORE JSON parsing (prevents DoS)
+- **ID field type validation** - Validates ID is string, number, or null per spec
+- **DoS protection with size limits**: Comprehensive request validation:
   - `MAX_MESSAGE_SIZE`: 10MB maximum message size
   - `MAX_ARRAY_LENGTH`: 10,000 maximum array items
   - `MAX_STRING_LENGTH`: 1MB maximum string length
   - `MAX_NESTING_DEPTH`: 20 maximum nesting levels
   - `MAX_METHOD_NAME_LENGTH`: 256 maximum method name characters
 - **New exception**: `RequestTooLargeError` for size limit violations
-- **Request validation**: `check_size_limits()` function for validating request sizes
-- **Scope validation**: Enhanced scope sanitization to prevent security issues
+- **Enhanced error sanitization** - No internal details leaked in error responses
+
+#### Permission-Based Access Control
+- **`@permission_required()` decorator** (`decorators.py`):
+  - Integrates with Django's permission system
+  - Supports single or multiple permissions
+  - Returns `METHOD_NOT_FOUND` to prevent method enumeration (security-first)
+  - Works with both sync and async methods
+
+#### Custom JSON Serialization
+- **Custom JSON encoder support**:
+  - Set `json_encoder_class` attribute on consumer
+  - Supports datetime, Decimal, dataclasses, and custom types
+  - Automatic fallback to `str()` for non-serializable objects
+  - Improved error handling for serialization failures
+
+#### API Introspection
+- **Method metadata API**:
+  - `get_method_info(method_name)` - Returns `MethodInfo` with signature, docstring, context flag
+  - `describe_api()` - Generates OpenRPC-compatible API description
+  - Runtime method discovery for documentation generation
+- **MethodInfo dataclass** - Comprehensive method metadata with signature introspection
 
 #### Type Safety
 - **Protocol classes**: New `protocols.py` module with Protocol classes for Django Channels mixin methods
@@ -66,47 +186,74 @@ This is a major release representing a comprehensive code quality improvement ef
   - Supports RpcContext injection
   - Comprehensive documentation and examples
 
+#### Architecture & Code Quality
+- **Eliminated code duplication** (`decorators.py`):
+  - Created shared `inspect_accepts_context()` utility function
+  - Removed 150+ lines of duplicate decorator code
+  - Single source of truth for RpcContext parameter detection
+- **Moved `RpcMethodWrapper` to `protocols.py`** - Better module organization, avoids circular imports
+- **Shared decorator factory** - `create_rpc_method_wrapper()` for consistent wrapper creation
+
 #### Performance Optimizations
 - **31x faster method introspection**: Method introspection moved from per-invocation to registration time (96.8% improvement)
   - Before: ~1.03s for 100,000 invocations
   - After: ~0.03s for 100,000 invocations
-- **Consolidated validation logic**: Eliminated ~40 lines of duplicated code with new `validation.py` module
-- **Lazy logging**: Replaced f-string logging with lazy % formatting for 5-10% improvement in production
+- **Pre-parse size validation**: Prevents DoS by checking size before JSON parsing
+- **Eliminated decorator duplication**: Reduced code paths, improved performance
+- **Lazy logging**: Replaced f-string logging with lazy % formatting
 
 #### Testing
-- **15 new performance tests**: Comprehensive performance test suite in `tests/performance/`
-  - Method introspection caching validation
-  - Concurrent connection handling tests
-  - Size limit validation performance tests
-  - Large response chunking tests
-- **288 total tests**: All passing with 83.95% code coverage (100% WebSocket coverage)
+- **+119 new tests**: Expanded test suite to 363 tests (up from 244)
+  - 33 introspection API tests
+  - 29 decorator tests (permission, context detection)
+  - 25 integration tests
+  - 15 performance tests
+  - New middleware tests
+- **88% code coverage** (up from 83%)
+- **All 363 tests passing**
 
 #### Documentation
-- **JSON-RPC 2.0 compliance section**: Complete documentation of JSON-RPC 2.0 implementation details
-- **Enhanced docstrings**: Comprehensive NumPy-style docstrings with examples for all public methods:
-  - `get_rpc_methods()` - Method introspection patterns
-  - `get_rpc_notifications()` - Notification discovery
-  - `validate_scope()` - Security validation examples
-  - `notify_channel()` - Notification patterns
-- **Consumer class documentation**: Full documentation for sync and async consumer classes
-- **Migration guide**: Step-by-step guide for upgrading from 0.x to 1.0.0
-- **Breaking changes section**: Clear documentation of all breaking changes
+- **Comprehensive README updates**:
+  - Configuration section with Django settings examples
+  - Middleware usage guide with built-in middleware
+  - Signals integration examples for APM tools
+  - Permission decorator documentation
+  - Custom JSON encoder examples
+  - API introspection guide
+- **New example files**:
+  - `examples/comprehensive_example.py` - Showcases all 1.0.0 features
+  - `examples/database_usage.py` - Updated to use RpcContext
+  - `examples/middleware_usage.py` - Middleware patterns
+  - `examples/introspection_demo.py` - API discovery examples
+- **Enhanced docstrings**: NumPy-style docstrings with examples throughout
+- **Migration guide**: Clear instructions for all breaking changes
 
 ### Changed
 
-- **Simplified RPC processing**: Reduced complexity while improving maintainability
-- **Error code management**: All error codes now use `IntEnum` for type safety
-- **Public API definition**: Clear `__all__` exports defining the public API
-- **Pre-commit hooks**: Updated to latest versions with mypy integration
+- **Decorator implementation refactored**: All decorators now use shared logic from `decorators.py`
+- **Error handling improved**: Better exception categorization, no more masking of bugs
+- **Validation order optimized**: ID validation before version check for better error messages
+- **Module organization**: Better separation of concerns (protocols, decorators, middleware, signals, config)
+- **Test organization**: Better test structure with dedicated files for new features
 - **Test organization**: Improved test structure with unit, integration, edge case, and performance tests
 
 ### Fixed
 
+#### JSON-RPC 2.0 Protocol Compliance
+- **Null ID handling** (CRITICAL): `"id": null` now correctly requires response instead of being treated as notification
+  - Fixed violation of JSON-RPC 2.0 specification
+  - Notifications are now correctly identified by **absence** of `id` field, not `null` value
+- **ID field type validation**: Request IDs are now validated to be string, number, or null (rejects objects, arrays)
+- **Parse error return value**: `decode_json()` now returns empty dict on parse error instead of None
+- **Pre-parse DoS protection**: Message size validated BEFORE JSON parsing to prevent memory exhaustion attacks
+
+#### Code Quality Fixes
+- **Eliminated code duplication**: Removed 150+ lines of duplicate decorator logic
+- **Exception handling**: `RuntimeError` no longer masked as application error (now correctly treated as bug indicator)
+- **Circular import risks**: Moved `RpcMethodWrapper` to `protocols.py`, eliminated lazy imports
 - **Empty list parameter bug**: `[] or {}` now correctly evaluates to `[]`
-- **Function introspection logic**: Proper `varkw` checking for keyword argument detection
-- **Deprecated function usage**: Removed internal usage of `create_json_rpc_frame()`
-- **Type annotations**: Fixed numerous type annotation issues throughout codebase
-- **Async method signatures**: Corrected return type annotations in `AsyncRpcBase`
+- **Function introspection logic**: Proper parameter inspection with better error handling
+- **Type annotations**: Fixed type annotation issues throughout codebase
 
 ### Security
 

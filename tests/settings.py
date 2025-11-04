@@ -6,6 +6,14 @@ INSTALLED_APPS = [
     "channels",
 ]
 
+# Database configuration for testing
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": ":memory:",
+    }
+}
+
 # Channel layers configuration for testing
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 

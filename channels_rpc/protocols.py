@@ -3,11 +3,97 @@
 This module defines Protocol classes that specify the interface we expect from
 Django Channels consumer classes when using RPC mixins. These protocols enable
 proper type checking without creating runtime dependencies on Channels internals.
+
+It also contains shared data structures like RpcMethodWrapper to avoid circular
+import issues between modules.
 """
 
 from __future__ import annotations
 
+import functools
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Protocol
+
+
+@dataclass
+class MethodInfo:
+    """Metadata about an RPC method.
+
+    Attributes
+    ----------
+    name : str
+        Method name as registered.
+    func : Callable
+        The actual function.
+    signature : str
+        String representation of function signature.
+    docstring : str | None
+        Method docstring if available.
+    accepts_context : bool
+        Whether method accepts RpcContext parameter.
+    transport_options : dict[str, bool]
+        Transport availability (e.g., {"websocket": True}).
+    is_notification : bool
+        Whether this is a notification handler.
+    """
+
+    name: str
+    func: Callable
+    signature: str
+    docstring: str | None
+    accepts_context: bool
+    transport_options: dict[str, bool]
+    is_notification: bool
+
+
+@dataclass
+class RpcMethodWrapper:
+    """Wrapper for RPC method with transport options.
+
+    This dataclass wraps RPC methods with metadata about their registration
+    and capabilities. It stores the actual function, transport options, method
+    name, and whether it accepts RpcContext as a parameter.
+
+    Attributes
+    ----------
+    func : Callable
+        The actual RPC method function.
+    options : dict[str, bool]
+        Transport options (websocket, http).
+    name : str
+        Method name to register.
+    accepts_context : bool
+        Whether method accepts RpcContext as first parameter.
+
+    Notes
+    -----
+    The wrapper supports descriptor protocol for proper method binding and
+    can be called directly like the wrapped function.
+    """
+
+    func: Callable[..., Any]
+    options: dict[str, bool]
+    name: str
+    accepts_context: bool
+
+    def __post_init__(self) -> None:
+        """Initialize wrapper attributes after dataclass init."""
+        # Set __name__ and __qualname__ to mimic the wrapped function
+        object.__setattr__(self, "__name__", getattr(self.func, "__name__", self.name))
+        object.__setattr__(
+            self, "__qualname__", getattr(self.func, "__qualname__", self.name)
+        )
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Make the wrapper callable."""
+        return self.func(*args, **kwargs)
+
+    def __get__(self, obj: Any, objtype: Any = None) -> Callable[..., Any]:
+        """Support instance method binding."""
+        if obj is None:
+            return self
+        return functools.partial(self.__call__, obj)
 
 
 class ChannelsConsumerProtocol(Protocol):

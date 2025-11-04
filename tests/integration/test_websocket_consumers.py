@@ -93,7 +93,7 @@ class TestSyncJsonRpcWebsocketConsumer:
 
         # Should not receive any response (notification)
         # Wait a moment to ensure no response is sent
-        import asyncio  # noqa: PLC0415
+        import asyncio
 
         try:
             await asyncio.wait_for(communicator.receive_json_from(), timeout=0.1)
@@ -238,7 +238,7 @@ class TestSyncJsonRpcWebsocketConsumer:
 
     @pytest.mark.asyncio
     async def test_encode_json_with_non_serializable_result(self):
-        """Should handle non-JSON-serializable results with error."""
+        """Should handle non-JSON-serializable results using default=str fallback."""
 
         class TestConsumer(JsonRpcWebsocketConsumer):
             pass
@@ -260,8 +260,45 @@ class TestSyncJsonRpcWebsocketConsumer:
 
         response = await communicator.receive_json_from()
 
-        assert "error" in response
-        assert response["error"]["code"] == JsonRpcErrorCode.PARSE_ERROR
+        # With default=str fallback, non-serializable objects get serialized as strings
+        assert "result" in response
+        assert response["id"] == 1
+        assert "<" in response["result"]  # String representation contains '<...>'
+        assert "NonSerializable" in response["result"]
+
+        await communicator.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_custom_json_encoder(self):
+        """Should use custom JSON encoder when provided."""
+        import json
+        from datetime import datetime
+
+        class DateTimeEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+                return super().default(obj)
+
+        class TestConsumer(JsonRpcWebsocketConsumer):
+            json_encoder_class = DateTimeEncoder
+
+        @TestConsumer.rpc_method()
+        def get_time():
+            return {"timestamp": datetime(2024, 1, 15, 10, 30, 45)}
+
+        communicator = WebsocketCommunicator(TestConsumer.as_asgi(), "/ws/")
+        await communicator.connect()
+
+        await communicator.send_json_to(
+            {"jsonrpc": "2.0", "method": "get_time", "id": 1}
+        )
+
+        response = await communicator.receive_json_from()
+
+        assert "result" in response
+        assert response["result"]["timestamp"] == "2024-01-15T10:30:45"
+        assert response["id"] == 1
 
         await communicator.disconnect()
 
@@ -344,7 +381,7 @@ class TestAsyncJsonRpcWebsocketConsumer:
         )
 
         # Should not receive any response
-        import asyncio  # noqa: PLC0415
+        import asyncio
 
         try:
             await asyncio.wait_for(communicator.receive_json_from(), timeout=0.1)
@@ -454,7 +491,7 @@ class TestAsyncJsonRpcWebsocketConsumer:
 
         # The connection should close or raise an error
         # AsyncJsonRpcWebsocketConsumer doesn't override decode_json like sync version
-        import asyncio  # noqa: PLC0415
+        import asyncio
 
         with pytest.raises((asyncio.TimeoutError, Exception)):
             # Expect no response or connection closure
@@ -483,6 +520,40 @@ class TestAsyncJsonRpcWebsocketConsumer:
 
         assert "error" in response
         assert response["error"]["code"] == -32600
+
+        await communicator.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_async_custom_json_encoder(self):
+        """Should use custom JSON encoder when provided in async consumer."""
+        import json
+        from datetime import datetime
+
+        class DateTimeEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, datetime):
+                    return obj.isoformat()
+                return super().default(obj)
+
+        class TestAsyncConsumer(AsyncJsonRpcWebsocketConsumer):
+            json_encoder_class = DateTimeEncoder
+
+        @TestAsyncConsumer.rpc_method()
+        async def get_async_time():
+            return {"timestamp": datetime(2024, 12, 25, 18, 45, 30)}
+
+        communicator = WebsocketCommunicator(TestAsyncConsumer.as_asgi(), "/ws/")
+        await communicator.connect()
+
+        await communicator.send_json_to(
+            {"jsonrpc": "2.0", "method": "get_async_time", "id": 1}
+        )
+
+        response = await communicator.receive_json_from()
+
+        assert "result" in response
+        assert response["result"]["timestamp"] == "2024-12-25T18:45:30"
+        assert response["id"] == 1
 
         await communicator.disconnect()
 
@@ -643,7 +714,8 @@ class TestWebSocketConsumerFeatures:
         @TestAsyncConsumer.rpc_method()
         async def async_raises_error():
             msg = "Async error"
-            raise RuntimeError(msg)
+            # Use ValueError (domain error) instead of RuntimeError (indicates bug)
+            raise ValueError(msg)
 
         communicator = WebsocketCommunicator(TestAsyncConsumer.as_asgi(), "/ws/")
         await communicator.connect()

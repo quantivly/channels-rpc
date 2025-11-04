@@ -12,6 +12,10 @@ Consumers:
 Context:
     - RpcContext: Execution context for RPC methods
 
+Middleware:
+    - RpcMiddleware: Protocol for middleware components
+    - LoggingMiddleware: Example middleware for logging RPC calls
+
 Exceptions:
     - JsonRpcError: Base JSON-RPC error exception
     - JsonRpcErrorCode: Enum of JSON-RPC 2.0 error codes
@@ -31,12 +35,27 @@ Error Codes:
 Size Limits (for custom validation):
     - MAX_MESSAGE_SIZE, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH
     - MAX_NESTING_DEPTH, MAX_METHOD_NAME_LENGTH
+
+Configuration:
+    Configure limits and behavior via Django settings::
+
+        CHANNELS_RPC = {
+            'MAX_MESSAGE_SIZE': 20 * 1024 * 1024,
+            'MAX_ARRAY_LENGTH': 50000,
+            'LOG_RPC_PARAMS': False,
+        }
+
+Notes
+-----
+.. versionchanged:: 1.0.0
+   Added Django settings integration and AppConfig support.
 """
 
 from channels_rpc.async_json_rpc_websocket_consumer import (
     AsyncJsonRpcWebsocketConsumer,
 )
 from channels_rpc.context import RpcContext
+from channels_rpc.decorators import permission_required
 from channels_rpc.exceptions import (
     JsonRpcError,
     JsonRpcErrorCode,
@@ -51,6 +70,7 @@ from channels_rpc.limits import (
     MAX_STRING_LENGTH,
     check_size_limits,
 )
+from channels_rpc.middleware import LoggingMiddleware, RpcMiddleware
 
 __all__ = [
     "MAX_ARRAY_LENGTH",
@@ -62,7 +82,10 @@ __all__ = [
     "JsonRpcError",
     "JsonRpcErrorCode",
     "JsonRpcWebsocketConsumer",
+    "LoggingMiddleware",
     "RequestTooLargeError",
     "RpcContext",
+    "RpcMiddleware",
     "check_size_limits",
+    "permission_required",
 ]

@@ -1,0 +1,6 @@
+[tool.ruff.lint.per-file-ignores]
+"examples/*.py" = ["ARG", "DTZ", "B904"]
+"tests/*.py" = ["ARG", "E402"]
+"channels_rpc/config.py" = ["PLW0603"]
+"channels_rpc/middleware.py" = ["ARG002"]
+"channels_rpc/signals.py" = ["FBT", "ARG002", "F401"]

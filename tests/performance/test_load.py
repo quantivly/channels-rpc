@@ -117,7 +117,7 @@ class TestMethodIntrospectionCachePerformance:
         and not computed via inspect.signature() on every call.
         """
         # Temporarily reduce logging noise for performance test
-        rpc_logger = logging.getLogger("django.channels.rpc")
+        rpc_logger = logging.getLogger("channels_rpc")
         original_level = rpc_logger.level
         rpc_logger.setLevel(logging.WARNING)
 
