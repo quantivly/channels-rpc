@@ -179,11 +179,11 @@ except ImportError:
             """No-op send_robust method."""
             return []
 
-    rpc_method_started = DummySignal()  # type: ignore[assignment]
-    rpc_method_completed = DummySignal()  # type: ignore[assignment]
-    rpc_method_failed = DummySignal()  # type: ignore[assignment]
-    rpc_client_connected = DummySignal()  # type: ignore[assignment]
-    rpc_client_disconnected = DummySignal()  # type: ignore[assignment]
+    rpc_method_started = DummySignal()
+    rpc_method_completed = DummySignal()
+    rpc_method_failed = DummySignal()
+    rpc_client_connected = DummySignal()
+    rpc_client_disconnected = DummySignal()
 
 
 __all__ = [

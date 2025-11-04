@@ -13,6 +13,8 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from channels_rpc.exceptions import JsonRpcError, JsonRpcErrorCode
+
 if TYPE_CHECKING:
     from channels_rpc.context import RpcContext
 
@@ -85,7 +87,8 @@ def inspect_accepts_context(func: Callable) -> bool:
         ):
             return True
 
-        # Import RpcContext for direct comparison (avoid circular import)
+        # Import RpcContext for direct comparison at runtime
+        # Inside try block to avoid circular imports at module load
         try:
             from channels_rpc.context import RpcContext
 
@@ -121,6 +124,7 @@ def create_rpc_method_wrapper(
     options: dict[str, bool],
     *,
     accepts_context: bool | None = None,
+    timeout: float | None = None,
 ) -> Any:  # Returns RpcMethodWrapper but avoid circular import
     """Create an RpcMethodWrapper with proper introspection.
 
@@ -139,6 +143,9 @@ def create_rpc_method_wrapper(
     accepts_context : bool | None, optional
         Whether the function accepts RpcContext. If None, will be auto-detected
         using inspect_accepts_context(). Default is None.
+    timeout : float | None, optional
+        Maximum execution time in seconds. If None, uses default timeout.
+        Default is None.
 
     Returns
     -------
@@ -163,6 +170,7 @@ def create_rpc_method_wrapper(
     >>> wrapper.accepts_context
     True
     """
+    # Import here to avoid circular dependency at module load time
     from channels_rpc.protocols import RpcMethodWrapper
 
     # Auto-detect context acceptance if not provided
@@ -174,6 +182,7 @@ def create_rpc_method_wrapper(
         options=options,
         name=name,
         accepts_context=accepts_context,
+        timeout=timeout,
     )
 
 
@@ -237,9 +246,6 @@ def permission_required(*permissions: str) -> Callable:
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def sync_wrapper(ctx: RpcContext, *args: Any, **kwargs: Any) -> Any:
-            # Import here to avoid circular dependency
-            from channels_rpc.exceptions import JsonRpcError, JsonRpcErrorCode
-
             # Extract user from context
             user = ctx.scope.get("user")
 
@@ -267,8 +273,6 @@ def permission_required(*permissions: str) -> Callable:
 
         @functools.wraps(func)
         async def async_wrapper(ctx: RpcContext, *args: Any, **kwargs: Any) -> Any:
-            from channels_rpc.exceptions import JsonRpcError, JsonRpcErrorCode
-
             user = ctx.scope.get("user")
 
             if not user or not getattr(user, "is_authenticated", False):

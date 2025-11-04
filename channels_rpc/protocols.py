@@ -53,7 +53,7 @@ class RpcMethodWrapper:
 
     This dataclass wraps RPC methods with metadata about their registration
     and capabilities. It stores the actual function, transport options, method
-    name, and whether it accepts RpcContext as a parameter.
+    name, whether it accepts RpcContext as a parameter, and execution timeout.
 
     Attributes
     ----------
@@ -65,6 +65,8 @@ class RpcMethodWrapper:
         Method name to register.
     accepts_context : bool
         Whether method accepts RpcContext as first parameter.
+    timeout : float | None
+        Maximum execution time in seconds, or None for no timeout.
 
     Notes
     -----
@@ -76,6 +78,7 @@ class RpcMethodWrapper:
     options: dict[str, bool]
     name: str
     accepts_context: bool
+    timeout: float | None = None
 
     def __post_init__(self) -> None:
         """Initialize wrapper attributes after dataclass init."""

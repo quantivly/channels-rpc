@@ -242,6 +242,12 @@ class JsonRpcError(Exception):
                 limit_type = self.data.get("limit_type", "unknown")
                 limit = self.data.get("limit", "unknown")
                 message = f"{message}: {limit_type} exceeds limit of {limit}"
+            elif self.code == JsonRpcErrorCode.INTERNAL_ERROR and isinstance(
+                self.data, dict
+            ):
+                if "timeout" in self.data:
+                    timeout = self.data["timeout"]
+                    message = f"{message}: Method execution timed out after {timeout:.1f} seconds"
 
         return generate_error_response(
             rpc_id=self.rpc_id, code=self.code, message=message, data=self.data

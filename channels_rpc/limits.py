@@ -29,20 +29,55 @@ to defaults if not.
    Limits are now configurable via Django settings under CHANNELS_RPC key.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from channels_rpc.config import get_config
+from channels_rpc.exceptions import RequestTooLargeError
 
-# Load configuration early
-_config = get_config()
+# Lazy-load configuration to avoid requiring Django settings at import time
+# This allows the module to be imported in test environments before Django is configured
+_config = None
 
-# Export as module-level constants for backward compatibility
-# These will use values from Django settings if configured
-MAX_MESSAGE_SIZE: int = _config.limits.max_message_size
-MAX_ARRAY_LENGTH: int = _config.limits.max_array_length
-MAX_STRING_LENGTH: int = _config.limits.max_string_length
-MAX_NESTING_DEPTH: int = _config.limits.max_nesting_depth
-MAX_METHOD_NAME_LENGTH: int = _config.limits.max_method_name_length
+
+def _get_config():
+    """Lazy-load configuration."""
+    global _config
+    if _config is None:
+        _config = get_config()
+    return _config
+
+
+# Module-level constants with sensible defaults
+# These will be lazy-loaded from Django settings on first use
+# Default values match the defaults in config.py
+MAX_MESSAGE_SIZE: int = 10 * 1024 * 1024  # 10MB
+MAX_ARRAY_LENGTH: int = 10_000
+MAX_STRING_LENGTH: int = 1024 * 1024  # 1MB
+MAX_NESTING_DEPTH: int = 20
+MAX_METHOD_NAME_LENGTH: int = 256
+
+_constants_initialized = False
+
+
+def _init_constants():
+    """Initialize module-level constants from Django config on first use."""
+    global MAX_MESSAGE_SIZE, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH
+    global MAX_NESTING_DEPTH, MAX_METHOD_NAME_LENGTH, _constants_initialized
+
+    if not _constants_initialized:
+        try:
+            config = _get_config()
+            MAX_MESSAGE_SIZE = config.limits.max_message_size
+            MAX_ARRAY_LENGTH = config.limits.max_array_length
+            MAX_STRING_LENGTH = config.limits.max_string_length
+            MAX_NESTING_DEPTH = config.limits.max_nesting_depth
+            MAX_METHOD_NAME_LENGTH = config.limits.max_method_name_length
+            _constants_initialized = True
+        except Exception:
+            # If Django settings not configured, use defaults (testing scenario)
+            pass
 
 
 def check_size_limits(data: dict, rpc_id: str | int | None = None) -> None:
@@ -60,7 +95,8 @@ def check_size_limits(data: dict, rpc_id: str | int | None = None) -> None:
     RequestTooLargeError
         If any size limit is exceeded.
     """
-    from channels_rpc.exceptions import RequestTooLargeError
+    # Initialize constants on first use (lazy loading)
+    _init_constants()
 
     # Check method name length
     if "method" in data:
@@ -93,8 +129,6 @@ def _check_value_limits(value: Any, rpc_id: str | int | None, depth: int) -> Non
     RequestTooLargeError
         If any size limit is exceeded.
     """
-    from channels_rpc.exceptions import RequestTooLargeError
-
     # Check nesting depth
     if depth > MAX_NESTING_DEPTH:
         raise RequestTooLargeError(rpc_id, "nesting_depth", MAX_NESTING_DEPTH)

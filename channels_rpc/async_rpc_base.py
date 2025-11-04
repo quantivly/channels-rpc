@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -10,18 +11,38 @@ from channels.db import database_sync_to_async
 from django.db import transaction
 
 from channels_rpc import logs
+from channels_rpc.context import RpcContext
+from channels_rpc.decorators import inspect_accepts_context
 from channels_rpc.exceptions import (
     JsonRpcError,
     JsonRpcErrorCode,
     generate_error_response,
 )
-from channels_rpc.rpc_base import RpcBase, RpcMethodWrapper
+from channels_rpc.protocols import RpcMethodWrapper
+from channels_rpc.registry import get_registry
+from channels_rpc.rpc_base import RpcBase
+from channels_rpc.signals import (
+    rpc_method_completed,
+    rpc_method_failed,
+    rpc_method_started,
+)
 from channels_rpc.utils import create_json_rpc_response
-
-if TYPE_CHECKING:
-    from channels_rpc.context import RpcContext
+from channels_rpc.validation import validate_rpc_data
 
 logger = logging.getLogger("channels_rpc")
+
+# Default maximum execution time for RPC methods (5 minutes)
+# This prevents DoS attacks from long-running methods
+# Can be overridden per-method using the timeout parameter
+MAX_METHOD_EXECUTION_TIME = 300
+
+# Maximum allowed length for request IDs (in characters)
+# Prevents DoS attacks via extremely long ID strings
+# Malicious clients could send IDs of 100MB+ which would:
+# - Consume excessive memory
+# - Slow down ID lookups and comparisons
+# - Fill up logs and monitoring systems
+MAX_REQUEST_ID_LENGTH = 256
 
 
 class AsyncRpcBase(RpcBase):
@@ -41,6 +62,7 @@ class AsyncRpcBase(RpcBase):
         websocket: bool = True,
         atomic: bool = True,
         using: str | None = None,
+        timeout: float | None = None,
     ) -> Callable:
         """Register an async RPC method that needs database access.
 
@@ -60,6 +82,10 @@ class AsyncRpcBase(RpcBase):
             Wrap method in atomic transaction, by default True.
         using : str | None, optional
             Database alias to use, by default None (uses default database).
+        timeout : float | None, optional
+            Maximum execution time in seconds. If None, uses default timeout
+            (300 seconds). Set to 0 or negative to disable timeout.
+            By default None.
 
         Returns
         -------
@@ -88,11 +114,12 @@ class AsyncRpcBase(RpcBase):
             def log_event(event_data: dict):
                 Event.objects.using('analytics').create(**event_data)
 
-        With consumer context::
+        With consumer context and custom timeout::
 
-            @MyConsumer.database_rpc_method()
+            @MyConsumer.database_rpc_method(timeout=60)
             def get_user(ctx: RpcContext, user_id: int) -> dict:
                 # This can safely use Django ORM
+                # Will timeout after 60 seconds
                 user = User.objects.get(id=user_id)
                 return {"name": user.username, "email": user.email}
 
@@ -105,11 +132,7 @@ class AsyncRpcBase(RpcBase):
         """
 
         def decorator(func: Callable) -> Callable:
-            from channels_rpc.decorators import inspect_accepts_context
-            from channels_rpc.protocols import RpcMethodWrapper
-            from channels_rpc.registry import get_registry
-
-            # Inspect the original sync function BEFORE wrapping with database_sync_to_async
+            # Inspect original sync function BEFORE wrapping
             name = method_name or func.__name__
             accepts_context = inspect_accepts_context(func)
 
@@ -134,6 +157,7 @@ class AsyncRpcBase(RpcBase):
                 options={"websocket": websocket},
                 name=name,
                 accepts_context=accepts_context,
+                timeout=timeout,
             )
             registry = get_registry()
             registry.register_method(cls, name, wrapper)
@@ -189,8 +213,6 @@ class AsyncRpcBase(RpcBase):
         Any
             Result from the method.
         """
-        import asyncio
-
         # Unwrap RpcMethodWrapper and get cached introspection result
         if isinstance(method, RpcMethodWrapper):
             actual_method = method.func
@@ -234,8 +256,50 @@ class AsyncRpcBase(RpcBase):
             is_notification=is_notification,
         )
 
+        # Determine timeout for this method
+        # Use method-specific timeout if set, otherwise use default
+        method_timeout: float | None = None
+        if isinstance(method, RpcMethodWrapper):
+            method_timeout = method.timeout
+
+        # Use method timeout if specified, otherwise use default
+        # Timeout values <= 0 disable timeout enforcement
+        timeout: float | None
+        if method_timeout is None:
+            timeout = float(MAX_METHOD_EXECUTION_TIME)
+        elif method_timeout <= 0:
+            timeout = None  # Disable timeout
+        else:
+            timeout = method_timeout
+
         logger.debug("Executing %s(%s)", method.__qualname__, json.dumps(params))
-        result = await self._execute_called_method(method, params, context)
+
+        # Execute method with timeout enforcement
+        if timeout is not None:
+            try:
+                result = await asyncio.wait_for(
+                    self._execute_called_method(method, params, context),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                # Log timeout for monitoring
+                logger.error(
+                    "RPC method %s timed out after %.1f seconds (rpc_id=%s)",
+                    method_name,
+                    timeout,
+                    rpc_id,
+                )
+                # Re-raise as JsonRpcError with appropriate error code
+                # Include timeout duration in data for informative error message
+                raise JsonRpcError(
+                    rpc_id=rpc_id,
+                    code=JsonRpcErrorCode.INTERNAL_ERROR,
+                    data={"timeout": timeout},
+                ) from None
+        else:
+            # No timeout enforcement
+            result = await self._execute_called_method(method, params, context)
+
         if not is_notification:
             logger.debug("Execution result: %s", result)
             # Return standard JSON-RPC 2.0 response
@@ -251,71 +315,73 @@ class AsyncRpcBase(RpcBase):
             result = None
         return result
 
-    async def _intercept_call(  # type: ignore[override]
-        self, data: dict[str, Any] | list[dict[str, Any]] | None
-    ) -> tuple[Any, bool]:
-        """Handle JSON-RPC 2.0 requests and responses.
+    def _validate_request_id(
+        self, rpc_id: str | int | float | None
+    ) -> tuple[dict[str, Any], bool] | tuple[None, None]:
+        """Validate request ID length to prevent DoS attacks.
 
         Parameters
         ----------
-        data : dict[str, Any] | list[dict[str, Any]] | None
-            JSON-RPC 2.0 message data.
+        rpc_id : str | int | float | None
+            Request ID to validate.
 
         Returns
         -------
-        tuple[Any, bool]
-            Result and whether it's a notification.
+        tuple[dict[str, Any], bool] | tuple[None, None]
+            Error response and False if invalid, or (None, None) if valid.
         """
-        from channels_rpc.validation import validate_rpc_data
+        if rpc_id is not None:
+            rpc_id_str = str(rpc_id)
+            if len(rpc_id_str) > MAX_REQUEST_ID_LENGTH:
+                # Don't echo back the long ID in the error response
+                # Use None as rpc_id to avoid consuming memory with malicious payload
+                logger.warning(
+                    f"Rejecting request with oversized ID: {len(rpc_id_str)} chars "
+                    f"(max: {MAX_REQUEST_ID_LENGTH}). Possible DoS attempt."
+                )
+                return (
+                    generate_error_response(
+                        rpc_id=None,  # Don't echo back long ID
+                        code=JsonRpcErrorCode.INVALID_REQUEST,
+                        message=(
+                            f"Request ID too long "
+                            f"(max: {MAX_REQUEST_ID_LENGTH} chars)"
+                        ),
+                    ),
+                    False,
+                )
+        return None, None
 
-        logger.debug("Intercepting call: %s", data)
+    async def _apply_request_middleware(
+        self,
+        data: dict[str, Any],
+        rpc_id: str | int | float | None,
+        method_name: str,
+        start_time: float,
+        is_notification: bool,  # noqa: FBT001, ARG002
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """Apply request middleware chain.
 
-        result: dict[str, Any] | None
+        Parameters
+        ----------
+        data : dict[str, Any]
+            Request data to process.
+        rpc_id : str | int | float | None
+            Request ID for error responses.
+        method_name : str
+            Method name for error reporting.
+        start_time : float
+            Start time for duration calculation.
+        is_notification : bool
+            Whether this is a notification.
 
-        # Use shared validation logic
-        error, is_response = validate_rpc_data(data)
-        if error or is_response:
-            return error or data, is_response
-
-        # After validation, data is guaranteed to be a dict
-        assert isinstance(data, dict)  # nosec B101 - Type assertion for mypy
-
-        # Must be a JSON-RPC 2.0 request (or attempt)
-        # Per JSON-RPC 2.0 spec:
-        # - Notification: request WITHOUT "id" field
-        # - Request with null ID: request WITH "id": null (must receive response)
-        method_name = data.get("method")
-        is_notification = "id" not in data
-        rpc_id = data.get("id") if not is_notification else None
-
-        logger.debug(logs.CALL_INTERCEPTED, data)
-
-        if rpc_id:
-            logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
-        else:
-            logger.info(logs.RPC_NOTIFICATION_START, method_name)
-
-        # Emit signal for method start
-        import time
-
-        from channels_rpc.signals import (
-            rpc_method_failed,
-            rpc_method_started,
-        )
-
-        start_time = time.time()
-        params = data.get("params", {})
-
-        rpc_method_started.send(
-            sender=self.__class__,
-            consumer=self,
-            method_name=method_name,
-            params=params,
-            rpc_id=rpc_id,
-        )
-
-        # Apply request middleware
-        for mw in self.middleware:
+        Returns
+        -------
+        tuple[dict[str, Any] | None, dict[str, Any] | None]
+            (processed_data, error_response). If error_response is not None,
+            processing should stop and return the error.
+        """
+        for mw in self.middleware or []:
             try:
                 processed_data = mw.process_request(data, self)
                 # Handle async middleware
@@ -326,14 +392,12 @@ class AsyncRpcBase(RpcBase):
                     logger.warning(
                         "Request rejected by middleware: %s", mw.__class__.__name__
                     )
-                    return (
-                        generate_error_response(
-                            rpc_id=rpc_id,
-                            code=JsonRpcErrorCode.INVALID_REQUEST,
-                            message="Request rejected by middleware",
-                        ),
-                        False,
+                    error = generate_error_response(
+                        rpc_id=rpc_id,
+                        code=JsonRpcErrorCode.INVALID_REQUEST,
+                        message="Request rejected by middleware",
                     )
+                    return None, error
                 data = processed_data
             except JsonRpcError:
                 # Let JSON-RPC errors propagate
@@ -352,36 +416,182 @@ class AsyncRpcBase(RpcBase):
                     rpc_id=rpc_id,
                     duration=duration,
                 )
-                result = generate_error_response(
+                error = generate_error_response(
                     rpc_id=rpc_id,
                     code=JsonRpcErrorCode.INTERNAL_ERROR,
                     message="Middleware error occurred",
                     data=None,
                 )
-                return result, is_notification
+                return None, error
+        return data, None
+
+    async def _apply_response_middleware(
+        self, result: dict[str, Any], is_notification: bool  # noqa: FBT001
+    ) -> dict[str, Any]:
+        """Apply response middleware chain in reverse order.
+
+        Parameters
+        ----------
+        result : dict[str, Any]
+            Response data to process.
+        is_notification : bool
+            Whether this is a notification.
+
+        Returns
+        -------
+        dict[str, Any]
+            Processed response.
+        """
+        if not is_notification and result is not None:
+            for mw in reversed(self.middleware or []):
+                try:
+                    processed_result = mw.process_response(result, self)
+                    # Handle async middleware
+                    if asyncio.iscoroutine(processed_result):
+                        processed_result = await processed_result
+                    result = processed_result
+                except Exception:
+                    # Log middleware errors but continue with original response
+                    logger.exception(
+                        "Middleware error in process_response: %s",
+                        mw.__class__.__name__,
+                    )
+        return result
+
+    def _handle_rpc_exception(
+        self,
+        exception: Exception,
+        rpc_id: str | int | float | None,
+        method_name: str,
+        start_time: float,
+    ) -> dict[str, Any]:
+        """Handle exceptions during RPC method execution.
+
+        Parameters
+        ----------
+        exception : Exception
+            Exception that was raised.
+        rpc_id : str | int | float | None
+            Request ID for error response.
+        method_name : str
+            Method name for error reporting.
+        start_time : float
+            Start time for duration calculation.
+
+        Returns
+        -------
+        dict[str, Any]
+            Error response.
+        """
+        duration = time.time() - start_time
+        rpc_method_failed.send(
+            sender=self.__class__,
+            consumer=self,
+            method_name=method_name,
+            error=exception,
+            rpc_id=rpc_id,
+            duration=duration,
+        )
+
+        if isinstance(exception, JsonRpcError):
+            # Re-raise JSON-RPC errors as-is
+            return exception.as_dict()
+        elif isinstance(exception, (ValueError, TypeError, KeyError, AttributeError)):
+            # Expected application-level errors (domain logic errors)
+            # Note: RuntimeError intentionally NOT caught here - it indicates bugs
+            logger.info("Application error in RPC method: %s", exception)
+            return generate_error_response(
+                rpc_id=rpc_id,
+                code=JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
+                message="Application error occurred",
+                data=None,  # Never leak internal details
+            )
+        else:
+            # Unexpected errors - these indicate bugs
+            logger.exception("Unexpected error processing RPC call")
+            return generate_error_response(
+                rpc_id=rpc_id,
+                code=JsonRpcErrorCode.INTERNAL_ERROR,
+                message="Internal server error",
+                data=None,  # Never leak internal details
+            )
+
+    async def _intercept_call(  # type: ignore[override]
+        self, data: dict[str, Any] | list[dict[str, Any]] | None
+    ) -> tuple[Any, bool]:
+        """Handle JSON-RPC 2.0 requests and responses.
+
+        Parameters
+        ----------
+        data : dict[str, Any] | list[dict[str, Any]] | None
+            JSON-RPC 2.0 message data.
+
+        Returns
+        -------
+        tuple[Any, bool]
+            Result and whether it's a notification.
+        """
+        logger.debug("Intercepting call: %s", data)
+
+        result: dict[str, Any] | None
+
+        # Use shared validation logic
+        error, is_response = validate_rpc_data(data)
+        if error or is_response:
+            return error or data, is_response
+
+        # After validation, data is guaranteed to be a dict
+        # This should never fail, but check for type safety
+        if not isinstance(data, dict):
+            error_msg = f"Expected dict after validation, got {type(data).__name__}"
+            raise TypeError(error_msg)
+
+        # Must be a JSON-RPC 2.0 request (or attempt)
+        # Per JSON-RPC 2.0 spec:
+        # - Notification: request WITHOUT "id" field
+        # - Request with null ID: request WITH "id": null (must receive response)
+        method_name = data.get("method")
+        is_notification = "id" not in data
+        rpc_id = data.get("id") if not is_notification else None
+
+        # Validate request ID length to prevent DoS attacks
+        error_response, should_return = self._validate_request_id(rpc_id)
+        if error_response is not None:
+            return error_response, should_return
+
+        logger.debug(logs.CALL_INTERCEPTED, data)
+
+        if rpc_id:
+            logger.info(logs.RPC_METHOD_CALL_START, method_name, rpc_id)
+        else:
+            logger.info(logs.RPC_NOTIFICATION_START, method_name)
+
+        # Emit signal for method start
+        start_time = time.time()
+        params = data.get("params", {})
+
+        rpc_method_started.send(
+            sender=self.__class__,
+            consumer=self,
+            method_name=method_name,
+            params=params,
+            rpc_id=rpc_id,
+        )
+
+        # Apply request middleware
+        data, error = await self._apply_request_middleware(
+            data, rpc_id, method_name, start_time, is_notification
+        )
+        if error is not None:
+            return error, is_notification
 
         try:
             result = await self._process_call(data, is_notification=is_notification)
 
-            # Apply response middleware (in reverse order, only for non-notifications with results)
-            if not is_notification and result is not None:
-                for mw in reversed(self.middleware):
-                    try:
-                        processed_result = mw.process_response(result, self)
-                        # Handle async middleware
-                        if asyncio.iscoroutine(processed_result):
-                            processed_result = await processed_result
-                        result = processed_result
-                    except Exception:
-                        # Log middleware errors but continue with original response
-                        logger.exception(
-                            "Middleware error in process_response: %s",
-                            mw.__class__.__name__,
-                        )
+            # Apply response middleware (reverse order, non-notifications)
+            result = await self._apply_response_middleware(result, is_notification)
 
             # Emit signal for successful completion
-            from channels_rpc.signals import rpc_method_completed
-
             duration = time.time() - start_time
             rpc_method_completed.send(
                 sender=self.__class__,
@@ -392,55 +602,15 @@ class AsyncRpcBase(RpcBase):
                 duration=duration,
             )
 
-        except JsonRpcError as e:
-            # Re-raise JSON-RPC errors as-is
-            duration = time.time() - start_time
-            rpc_method_failed.send(
-                sender=self.__class__,
-                consumer=self,
-                method_name=method_name,
-                error=e,
-                rpc_id=rpc_id,
-                duration=duration,
-            )
-            result = e.as_dict()
-        except (ValueError, TypeError, KeyError, AttributeError) as e:
-            # Expected application-level errors (domain logic errors)
-            # Note: RuntimeError intentionally NOT caught here - it indicates bugs
-            logger.info("Application error in RPC method: %s", e)
-            duration = time.time() - start_time
-            rpc_method_failed.send(
-                sender=self.__class__,
-                consumer=self,
-                method_name=method_name,
-                error=e,
-                rpc_id=rpc_id,
-                duration=duration,
-            )
-            result = generate_error_response(
-                rpc_id=rpc_id,
-                code=JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
-                message="Application error occurred",
-                data=None,  # Never leak internal details
-            )
-        except Exception as e:
-            # Unexpected errors - these indicate bugs
-            logger.exception("Unexpected error processing RPC call")
-            duration = time.time() - start_time
-            rpc_method_failed.send(
-                sender=self.__class__,
-                consumer=self,
-                method_name=method_name,
-                error=e,
-                rpc_id=rpc_id,
-                duration=duration,
-            )
-            result = generate_error_response(
-                rpc_id=rpc_id,
-                code=JsonRpcErrorCode.INTERNAL_ERROR,
-                message="Internal server error",
-                data=None,  # Never leak internal details
-            )
+        except (
+            JsonRpcError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            Exception,
+        ) as e:
+            result = self._handle_rpc_exception(e, rpc_id, method_name, start_time)
 
         if rpc_id:
             logger.debug(logs.RPC_METHOD_CALL_END, rpc_id, method_name, result)
