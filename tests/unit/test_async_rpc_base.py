@@ -32,7 +32,9 @@ class TestAsyncExecuteCalledMethod:
         ]["async_add"]
         params = {"a": 5, "b": 3}
 
-        result = await async_consumer_with_methods.execute_called_method(method, params)
+        result = await async_consumer_with_methods._execute_called_method(
+            method, params
+        )
 
         assert result == 8
 
@@ -44,7 +46,9 @@ class TestAsyncExecuteCalledMethod:
         ]["async_add"]
         params = [7, 3]
 
-        result = await async_consumer_with_methods.execute_called_method(method, params)
+        result = await async_consumer_with_methods._execute_called_method(
+            method, params
+        )
 
         assert result == 10
 
@@ -58,7 +62,9 @@ class TestAsyncExecuteCalledMethod:
         ]["async_echo"]
         params = {"message": "test"}
 
-        result = await async_consumer_with_methods.execute_called_method(method, params)
+        result = await async_consumer_with_methods._execute_called_method(
+            method, params
+        )
 
         assert "consumer: True" in result
 
@@ -72,7 +78,9 @@ class TestAsyncExecuteCalledMethod:
         ]["async_add"]
         params = {"a": 1, "b": 1}
 
-        result = await async_consumer_with_methods.execute_called_method(method, params)
+        result = await async_consumer_with_methods._execute_called_method(
+            method, params
+        )
 
         assert result == 2
 
@@ -91,7 +99,7 @@ class TestAsyncProcessCall:
             "id": 1,
         }
 
-        result = await async_consumer_with_methods.process_call(
+        result = await async_consumer_with_methods._process_call(
             data, is_notification=False
         )
 
@@ -110,7 +118,7 @@ class TestAsyncProcessCall:
             "id": 2,
         }
 
-        result = await async_consumer_with_methods.process_call(
+        result = await async_consumer_with_methods._process_call(
             data, is_notification=False
         )
 
@@ -127,7 +135,7 @@ class TestAsyncProcessCall:
             "params": {"event": "test"},
         }
 
-        result = await async_consumer_with_methods.process_call(
+        result = await async_consumer_with_methods._process_call(
             data, is_notification=True
         )
 
@@ -148,7 +156,7 @@ class TestAsyncProcessCall:
         consumer = TestConsumer(async_consumer_with_methods.scope)
         data = {"jsonrpc": "2.0", "method": "no_params_method", "id": 1}
 
-        result = await consumer.process_call(data, is_notification=False)
+        result = await consumer._process_call(data, is_notification=False)
 
         assert result["result"] == "success"
 
@@ -169,7 +177,7 @@ class TestAsyncProcessCall:
         consumer = TestConsumer(async_consumer_with_methods.scope)
         data = {"jsonrpc": "2.0", "method": "bad_notification"}
 
-        result = await consumer.process_call(data, is_notification=True)
+        result = await consumer._process_call(data, is_notification=True)
 
         assert result is None
         assert "notification method shouldn't return any result" in caplog.text
@@ -192,7 +200,9 @@ class TestAsyncInterceptCall:
             "id": 1,
         }
 
-        result, is_notification = await async_consumer_with_methods.intercept_call(data)
+        result, is_notification = await async_consumer_with_methods._intercept_call(
+            data
+        )
 
         assert isinstance(result, dict)
         assert result["result"] == 3
@@ -207,7 +217,9 @@ class TestAsyncInterceptCall:
             "params": {"event": "test"},
         }
 
-        result, is_notification = await async_consumer_with_methods.intercept_call(data)
+        result, is_notification = await async_consumer_with_methods._intercept_call(
+            data
+        )
 
         assert result is None
         assert is_notification is True
@@ -215,7 +227,7 @@ class TestAsyncInterceptCall:
     @pytest.mark.asyncio
     async def test_intercept_call_with_empty_data(self, mock_async_rpc_consumer):
         """Should return JsonRpcErrorCode.INVALID_REQUEST error for empty data."""
-        result, is_notification = await mock_async_rpc_consumer.intercept_call({})
+        result, is_notification = await mock_async_rpc_consumer._intercept_call({})
 
         assert result["jsonrpc"] == "2.0"
         assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
@@ -224,7 +236,7 @@ class TestAsyncInterceptCall:
     @pytest.mark.asyncio
     async def test_intercept_call_with_none_data(self, mock_async_rpc_consumer):
         """Should return JsonRpcErrorCode.INVALID_REQUEST error for None data."""
-        result, is_notification = await mock_async_rpc_consumer.intercept_call(None)
+        result, is_notification = await mock_async_rpc_consumer._intercept_call(None)
 
         assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
         assert is_notification is False
@@ -235,7 +247,7 @@ class TestAsyncInterceptCall:
         self, mock_async_rpc_consumer, invalid_data
     ):
         """Should return JsonRpcErrorCode.INVALID_REQUEST for non-dict data."""
-        result, is_notification = await mock_async_rpc_consumer.intercept_call(
+        result, is_notification = await mock_async_rpc_consumer._intercept_call(
             invalid_data
         )
 
@@ -247,7 +259,7 @@ class TestAsyncInterceptCall:
         """Should detect JSON-RPC response (has 'result' or 'error' field)."""
         response_data = {"jsonrpc": "2.0", "result": "success", "id": 1}
 
-        result, is_notification = await mock_async_rpc_consumer.intercept_call(
+        result, is_notification = await mock_async_rpc_consumer._intercept_call(
             response_data
         )
 
@@ -263,7 +275,7 @@ class TestAsyncInterceptCall:
             "id": 1,
         }
 
-        result, is_notification = await mock_async_rpc_consumer.intercept_call(
+        result, is_notification = await mock_async_rpc_consumer._intercept_call(
             error_data
         )
 
@@ -281,7 +293,9 @@ class TestAsyncInterceptCall:
             "id": 1,
         }
 
-        result, is_notification = await async_consumer_with_methods.intercept_call(data)
+        result, is_notification = await async_consumer_with_methods._intercept_call(
+            data
+        )
 
         assert "error" in result
         assert result["error"]["code"] == JsonRpcErrorCode.METHOD_NOT_FOUND
@@ -307,7 +321,7 @@ class TestAsyncInterceptCall:
         consumer = FailingAsyncConsumer()
         data = {"jsonrpc": "2.0", "method": "failing_method", "id": 1}
 
-        result, is_notification = await consumer.intercept_call(data)
+        result, is_notification = await consumer._intercept_call(data)
 
         assert "error" in result
         assert result["error"]["code"] == JsonRpcErrorCode.GENERIC_APPLICATION_ERROR
@@ -328,7 +342,7 @@ class TestAsyncInterceptCall:
             "params": {"event": "test"},
         }
 
-        _, is_notification = await async_consumer_with_methods.intercept_call(data)
+        _, is_notification = await async_consumer_with_methods._intercept_call(data)
 
         assert is_notification is True
 
@@ -344,7 +358,7 @@ class TestAsyncInterceptCall:
             "id": 1,
         }
 
-        _, is_notification = await async_consumer_with_methods.intercept_call(data)
+        _, is_notification = await async_consumer_with_methods._intercept_call(data)
 
         assert is_notification is False
 
@@ -364,7 +378,7 @@ class TestAsyncInterceptCall:
         consumer = FailingAsyncConsumer()
         data = {"jsonrpc": "2.0", "method": "method_with_args", "id": 1}
 
-        result, _ = await consumer.intercept_call(data)
+        result, _ = await consumer._intercept_call(data)
 
         # Security fix: exception details should not be leaked
         # data field is not included when None
@@ -386,7 +400,7 @@ class TestAsyncInterceptCall:
         consumer = FailingAsyncConsumer()
         data = {"jsonrpc": "2.0", "method": "method_with_multiple_args", "id": 1}
 
-        result, _ = await consumer.intercept_call(data)
+        result, _ = await consumer._intercept_call(data)
 
         # Security fix: exception details should not be leaked
         # data field is not included when None
@@ -478,7 +492,7 @@ class TestAsyncProcessingEdgeCases:
         consumer = TestAsyncConsumer()
         data = {"jsonrpc": "2.0", "method": "returns_none", "id": 1}
 
-        result = await consumer.process_call(data, is_notification=False)
+        result = await consumer._process_call(data, is_notification=False)
 
         assert isinstance(result, dict)
         assert result["jsonrpc"] == "2.0"
@@ -500,7 +514,7 @@ class TestAsyncProcessingEdgeCases:
         consumer = TestAsyncConsumer()
         data = {"jsonrpc": "2.0", "method": "returns_false", "id": 1}
 
-        result = await consumer.process_call(data, is_notification=False)
+        result = await consumer._process_call(data, is_notification=False)
 
         assert result is not None
         assert result["result"] is False
@@ -520,7 +534,7 @@ class TestAsyncProcessingEdgeCases:
         consumer = TestAsyncConsumer()
         data = {"jsonrpc": "2.0", "method": "returns_zero", "id": 1}
 
-        result = await consumer.process_call(data, is_notification=False)
+        result = await consumer._process_call(data, is_notification=False)
 
         assert result is not None
         assert result["result"] == 0
@@ -530,7 +544,7 @@ class TestAsyncProcessingEdgeCases:
         self, mock_async_rpc_consumer
     ):
         """Should use None rpc_id for empty dict."""
-        result, _ = await mock_async_rpc_consumer.intercept_call({})
+        result, _ = await mock_async_rpc_consumer._intercept_call({})
 
         # Empty dict has no id field, so rpc_id should be None
         assert result["id"] is None
@@ -540,7 +554,7 @@ class TestAsyncProcessingEdgeCases:
         self, mock_async_rpc_consumer
     ):
         """Should use None rpc_id for invalid types."""
-        result, _ = await mock_async_rpc_consumer.intercept_call("invalid")
+        result, _ = await mock_async_rpc_consumer._intercept_call("invalid")
 
         assert result["id"] is None
 
@@ -556,7 +570,7 @@ class TestAsyncProcessingEdgeCases:
             "id": 1,
         }
 
-        result = await async_consumer_with_methods.process_call(
+        result = await async_consumer_with_methods._process_call(
             data, is_notification=False
         )
 

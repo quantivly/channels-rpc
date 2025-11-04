@@ -51,7 +51,7 @@ class AsyncRpcBase(RpcBase):
             """Encode a dict as JSON."""
             ...
 
-    async def execute_called_method(
+    async def _execute_called_method(
         self, method: Callable | RpcMethodWrapper, params: dict | list
     ) -> Any:
         """Execute RPC method with appropriate parameter unpacking.
@@ -98,14 +98,14 @@ class AsyncRpcBase(RpcBase):
             return await result
         return result
 
-    async def process_call(  # type: ignore[override]
+    async def _process_call(  # type: ignore[override]
         self, data: dict[str, Any], *, is_notification: bool = False
     ) -> dict[str, Any] | None:
-        method = self.get_method(data, is_notification=is_notification)
-        params = self.get_params(data)
-        rpc_id, _ = self.get_rpc_id(data)
+        method = self._get_method(data, is_notification=is_notification)
+        params = self._get_params(data)
+        rpc_id, _ = self._get_rpc_id(data)
         logger.debug("Executing %s(%s)", method.__qualname__, json.dumps(params))
-        result = await self.execute_called_method(method, params)
+        result = await self._execute_called_method(method, params)
         if not is_notification:
             logger.debug("Execution result: %s", result)
             # Return standard JSON-RPC 2.0 response
@@ -121,7 +121,7 @@ class AsyncRpcBase(RpcBase):
             result = None
         return result
 
-    async def intercept_call(  # type: ignore[override]
+    async def _intercept_call(  # type: ignore[override]
         self, data: dict[str, Any] | list[dict[str, Any]] | None
     ) -> tuple[Any, bool]:
         """Handle JSON-RPC 2.0 requests and responses.
@@ -163,7 +163,7 @@ class AsyncRpcBase(RpcBase):
             logger.info(logs.RPC_NOTIFICATION_START, method_name)
 
         try:
-            result = await self.process_call(data, is_notification=is_notification)
+            result = await self._process_call(data, is_notification=is_notification)
         except JsonRpcError as e:
             # Re-raise JSON-RPC errors as-is
             result = e.as_dict()
@@ -197,7 +197,7 @@ class AsyncRpcBase(RpcBase):
         self, data: dict[str, Any]
     ) -> None:
         logger.debug("Received JSON: %s", data)
-        result, is_notification = await self.intercept_call(data)
+        result, is_notification = await self._intercept_call(data)
         if not is_notification:
             logger.debug("Sending result: %s", result)
             await self.send_json(result)

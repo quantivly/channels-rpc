@@ -315,7 +315,7 @@ class RpcBase:
         content = create_json_rpc_request(rpc_id=None, method=method, params=params)
         self.send(self.encode_json(content))
 
-    def validate_call(self, data: dict[str, Any]) -> None:
+    def _validate_call(self, data: dict[str, Any]) -> None:
         """Validate RPC call data.
 
         Parameters
@@ -365,7 +365,7 @@ class RpcBase:
 
         logger.debug("Call data is valid")
 
-    def get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
+    def _get_method(self, data: dict[str, Any], *, is_notification: bool) -> Callable:
         """Get the method to call.
 
         Parameters
@@ -387,7 +387,7 @@ class RpcBase:
         JsonRpcError
             RPC method not supported.
         """
-        self.validate_call(data)
+        self._validate_call(data)
         rpc_id = data.get("id")
         method_name = data["method"]
         logger.debug("Getting method: %s", method_name)
@@ -412,7 +412,7 @@ class RpcBase:
             logger.debug("Method found: %s", method.__name__)
         return method
 
-    def get_params(self, data: dict[str, Any]) -> dict | list:
+    def _get_params(self, data: dict[str, Any]) -> dict | list:
         """Get RPC call parameters from request data.
 
         Parameters
@@ -459,7 +459,7 @@ class RpcBase:
         logger.debug("Call parameters found: %s", params)
         return params
 
-    def get_rpc_id(self, data: dict[str, Any]) -> tuple[str | None, str]:
+    def _get_rpc_id(self, data: dict[str, Any]) -> tuple[str | None, str]:
         """Get the RPC ID.
 
         Parameters
@@ -478,7 +478,7 @@ class RpcBase:
             logger.debug("RPC ID found: %s", rpc_id)
         return rpc_id, "id"
 
-    def process_call(
+    def _process_call(
         self, data: dict[str, Any], *, is_notification: bool = False
     ) -> dict[str, Any] | None:
         """Process the received remote procedure call data.
@@ -495,11 +495,11 @@ class RpcBase:
         dict[str, Any] | None
             Result of the remote procedure call.
         """
-        method = self.get_method(data, is_notification=is_notification)
-        params = self.get_params(data)
-        rpc_id, _ = self.get_rpc_id(data)
+        method = self._get_method(data, is_notification=is_notification)
+        params = self._get_params(data)
+        rpc_id, _ = self._get_rpc_id(data)
         logger.debug("Executing %s(%s)", method.__qualname__, json.dumps(params))
-        result = self.execute_called_method(method, params)
+        result = self._execute_called_method(method, params)
         if not is_notification:
             logger.debug("Execution result: %s", result)
             # Return standard JSON-RPC 2.0 response
@@ -515,7 +515,7 @@ class RpcBase:
             result = None
         return result
 
-    def intercept_call(self, data: dict[str, Any]) -> tuple[Any, bool]:
+    def _intercept_call(self, data: dict[str, Any]) -> tuple[Any, bool]:
         """Handle JSON-RPC 2.0 requests and responses.
 
         Parameters
@@ -552,7 +552,7 @@ class RpcBase:
             logger.info(logs.RPC_NOTIFICATION_START, method_name)
 
         try:
-            result = self.process_call(data, is_notification=is_notification)
+            result = self._process_call(data, is_notification=is_notification)
         except JsonRpcError as e:
             # Re-raise JSON-RPC errors as-is
             result = e.as_dict()
@@ -582,7 +582,7 @@ class RpcBase:
 
         return result, is_notification
 
-    def execute_called_method(
+    def _execute_called_method(
         self, method: Callable | RpcMethodWrapper, params: list | dict
     ) -> Any:
         """Execute RPC method with appropriate parameter unpacking.
@@ -631,7 +631,7 @@ class RpcBase:
             Received message data.
         """
         logger.debug("Received JSON message: %s", data)
-        result, is_notification = self.intercept_call(data)
+        result, is_notification = self._intercept_call(data)
         if not is_notification:
             logger.debug("Sending result: %s", result)
             self.send_json(result)

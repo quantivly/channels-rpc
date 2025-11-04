@@ -32,28 +32,28 @@ class TestValidateCall:
         }
 
         # Should not raise
-        mock_rpc_consumer.validate_call(valid_data)
+        mock_rpc_consumer._validate_call(valid_data)
 
     def test_validate_call_without_params(self, mock_rpc_consumer):
         """Should accept request without params field."""
         data = {"jsonrpc": "2.0", "method": "test_method", "id": 1}
 
         # Should not raise
-        mock_rpc_consumer.validate_call(data)
+        mock_rpc_consumer._validate_call(data)
 
     def test_validate_call_without_id(self, mock_rpc_consumer):
         """Should accept notification (no id field)."""
         data = {"jsonrpc": "2.0", "method": "test_method", "params": {}}
 
         # Should not raise
-        mock_rpc_consumer.validate_call(data)
+        mock_rpc_consumer._validate_call(data)
 
     def test_validate_call_rejects_wrong_version_string(self, mock_rpc_consumer):
         """Should reject jsonrpc version other than '2.0' string."""
         data = {"jsonrpc": "1.0", "method": "test", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
         assert "version" in exc_info.value.data
@@ -69,7 +69,7 @@ class TestValidateCall:
         data = {"jsonrpc": version, "method": "test", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
         assert exc_info.value.data["version"] == version
@@ -79,7 +79,7 @@ class TestValidateCall:
         data = {"jsonrpc": 2.0, "method": "test", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
         assert exc_info.value.data["version"] == 2.0
@@ -89,7 +89,7 @@ class TestValidateCall:
         data = {"jsonrpc": 2, "method": "test", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
 
@@ -98,7 +98,7 @@ class TestValidateCall:
         data = {"jsonrpc": None, "method": "test", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
 
@@ -107,7 +107,7 @@ class TestValidateCall:
         data = {"jsonrpc": "2.0", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
         assert "field" in exc_info.value.data
@@ -121,7 +121,7 @@ class TestValidateCall:
         data = {"jsonrpc": "2.0", "method": method_value, "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
         assert "field" in exc_info.value.data
@@ -132,7 +132,7 @@ class TestValidateCall:
         data = {"jsonrpc": "2.0", "method": ["test"], "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
         assert "list" in exc_info.value.data["field"]
@@ -142,7 +142,7 @@ class TestValidateCall:
         data = {"jsonrpc": "2.0", "method": {"name": "test"}, "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
         assert "dict" in exc_info.value.data["field"]
@@ -152,7 +152,7 @@ class TestValidateCall:
         data = {"jsonrpc": "1.0", "method": "test", "id": 42}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.validate_call(data)
+            mock_rpc_consumer._validate_call(data)
 
         assert exc_info.value.rpc_id == 42
 
@@ -164,7 +164,7 @@ class TestGetParams:
     def test_get_params_with_dict(self, mock_rpc_consumer):
         """Should return dict parameters."""
         data = {"params": {"key": "value", "number": 123}}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         assert result == {"key": "value", "number": 123}
         assert isinstance(result, dict)
@@ -172,7 +172,7 @@ class TestGetParams:
     def test_get_params_with_list(self, mock_rpc_consumer):
         """Should return list parameters."""
         data = {"params": [1, 2, 3, "test"]}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         assert result == [1, 2, 3, "test"]
         assert isinstance(result, list)
@@ -180,14 +180,14 @@ class TestGetParams:
     def test_get_params_with_empty_dict(self, mock_rpc_consumer):
         """Should accept empty dict params."""
         data: dict[str, Any] = {"params": {}}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         assert result == {}
 
     def test_get_params_with_empty_list(self, mock_rpc_consumer):
         """Should preserve empty list (bug fix for falsy value handling)."""
         data: dict[str, Any] = {"params": []}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         # Bug fix: empty list should be preserved, not converted to {}
         assert result == []
@@ -196,7 +196,7 @@ class TestGetParams:
     def test_get_params_defaults_to_empty_dict(self, mock_rpc_consumer):
         """Should return empty dict when params not provided."""
         data = {"method": "test"}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         assert result == {}
         assert isinstance(result, dict)
@@ -204,14 +204,14 @@ class TestGetParams:
     def test_get_params_backward_compat_arguments(self, mock_rpc_consumer):
         """Should fall back to 'arguments' field for backward compatibility."""
         data = {"arguments": {"legacy": "value"}}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         assert result == {"legacy": "value"}
 
     def test_get_params_prefers_params_over_arguments(self, mock_rpc_consumer):
         """Should prefer 'params' over 'arguments' when both present."""
         data = {"params": {"new": "value"}, "arguments": {"old": "value"}}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         assert result == {"new": "value"}
 
@@ -221,7 +221,7 @@ class TestGetParams:
         data = {"params": invalid_params, "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.get_params(data)
+            mock_rpc_consumer._get_params(data)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_PARAMS
         assert "expected" in exc_info.value.data
@@ -230,7 +230,7 @@ class TestGetParams:
     def test_get_params_with_none_defaults_to_dict(self, mock_rpc_consumer):
         """Should treat None params as missing (defaults to {})."""
         data = {"params": None, "id": 1}
-        result = mock_rpc_consumer.get_params(data)
+        result = mock_rpc_consumer._get_params(data)
 
         # None is falsy, so implementation defaults to {}
         assert result == {}
@@ -240,7 +240,7 @@ class TestGetParams:
         data = {"params": "string_value", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.get_params(data)
+            mock_rpc_consumer._get_params(data)
 
         assert exc_info.value.data["actual"] == "str"
 
@@ -249,7 +249,7 @@ class TestGetParams:
         data = {"params": 123, "id": 99}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            mock_rpc_consumer.get_params(data)
+            mock_rpc_consumer._get_params(data)
 
         assert exc_info.value.rpc_id == 99
 
@@ -261,7 +261,7 @@ class TestGetRpcId:
     def test_get_rpc_id_with_integer(self, mock_rpc_consumer):
         """Should extract integer rpc_id."""
         data = {"id": 42}
-        rpc_id, key = mock_rpc_consumer.get_rpc_id(data)
+        rpc_id, key = mock_rpc_consumer._get_rpc_id(data)
 
         assert rpc_id == 42
         assert key == "id"
@@ -269,7 +269,7 @@ class TestGetRpcId:
     def test_get_rpc_id_with_string(self, mock_rpc_consumer):
         """Should extract string rpc_id."""
         data = {"id": "test-123"}
-        rpc_id, key = mock_rpc_consumer.get_rpc_id(data)
+        rpc_id, key = mock_rpc_consumer._get_rpc_id(data)
 
         assert rpc_id == "test-123"
         assert key == "id"
@@ -277,7 +277,7 @@ class TestGetRpcId:
     def test_get_rpc_id_with_none(self, mock_rpc_consumer):
         """Should return None for notifications (no id field)."""
         data = {"method": "test"}
-        rpc_id, key = mock_rpc_consumer.get_rpc_id(data)
+        rpc_id, key = mock_rpc_consumer._get_rpc_id(data)
 
         assert rpc_id is None
         assert key == "id"
@@ -285,21 +285,21 @@ class TestGetRpcId:
     def test_get_rpc_id_always_returns_id_key(self, mock_rpc_consumer):
         """Should always return 'id' as the key (JSON-RPC 2.0 spec)."""
         data = {"id": 1}
-        _, key = mock_rpc_consumer.get_rpc_id(data)
+        _, key = mock_rpc_consumer._get_rpc_id(data)
 
         assert key == "id"
 
     def test_get_rpc_id_with_zero(self, mock_rpc_consumer):
         """Should treat 0 as valid rpc_id."""
         data = {"id": 0}
-        rpc_id, _ = mock_rpc_consumer.get_rpc_id(data)
+        rpc_id, _ = mock_rpc_consumer._get_rpc_id(data)
 
         assert rpc_id == 0
 
     def test_get_rpc_id_with_negative_number(self, mock_rpc_consumer):
         """Should accept negative numbers as rpc_id."""
         data = {"id": -1}
-        rpc_id, _ = mock_rpc_consumer.get_rpc_id(data)
+        rpc_id, _ = mock_rpc_consumer._get_rpc_id(data)
 
         assert rpc_id == -1
 
@@ -312,7 +312,7 @@ class TestGetMethod:
         """Should return registered method."""
         data = {"jsonrpc": "2.0", "method": "add", "id": 1}
 
-        method = consumer_with_methods.get_method(data, is_notification=False)
+        method = consumer_with_methods._get_method(data, is_notification=False)
 
         assert method.__name__ == "add"
         assert callable(method)
@@ -321,7 +321,7 @@ class TestGetMethod:
         """Should lookup in rpc_notifications for notifications."""
         data = {"jsonrpc": "2.0", "method": "notify_event"}
 
-        method = consumer_with_methods.get_method(data, is_notification=True)
+        method = consumer_with_methods._get_method(data, is_notification=True)
 
         assert method.__name__ == "notify_event"
 
@@ -330,18 +330,18 @@ class TestGetMethod:
         data = {"jsonrpc": "2.0", "method": "unknown_method", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            consumer_with_methods.get_method(data, is_notification=False)
+            consumer_with_methods._get_method(data, is_notification=False)
 
         assert exc_info.value.code == JsonRpcErrorCode.METHOD_NOT_FOUND
         assert exc_info.value.data["method"] == "unknown_method"
 
     def test_get_method_validates_call_first(self, consumer_with_methods):
-        """Should call validate_call() before lookup."""
+        """Should call _validate_call() before lookup."""
         data = {"jsonrpc": "1.0", "method": "add", "id": 1}
 
         # Should fail validation before lookup
         with pytest.raises(JsonRpcError) as exc_info:
-            consumer_with_methods.get_method(data, is_notification=False)
+            consumer_with_methods._get_method(data, is_notification=False)
 
         assert exc_info.value.code == JsonRpcErrorCode.INVALID_REQUEST
 
@@ -351,7 +351,7 @@ class TestGetMethod:
         consumer_with_methods.scope = {"type": "websocket"}
         data = {"jsonrpc": "2.0", "method": "websocket_only", "id": 1}
 
-        method = consumer_with_methods.get_method(data, is_notification=False)
+        method = consumer_with_methods._get_method(data, is_notification=False)
         assert method.__name__ == "websocket_only"
 
     def test_get_method_rejects_http_only_on_websocket(self, consumer_with_methods):
@@ -360,7 +360,7 @@ class TestGetMethod:
         data = {"jsonrpc": "2.0", "method": "http_only", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            consumer_with_methods.get_method(data, is_notification=False)
+            consumer_with_methods._get_method(data, is_notification=False)
 
         assert exc_info.value.code == JsonRpcErrorCode.METHOD_NOT_FOUND
 
@@ -370,7 +370,7 @@ class TestGetMethod:
         consumer_with_methods.scope = {"type": "http"}
         data = {"jsonrpc": "2.0", "method": "http_only", "id": 1}
 
-        method = consumer_with_methods.get_method(data, is_notification=False)
+        method = consumer_with_methods._get_method(data, is_notification=False)
         assert method.__name__ == "http_only"
 
     def test_get_method_rejects_websocket_only_on_http(self, consumer_with_methods):
@@ -379,7 +379,7 @@ class TestGetMethod:
         data = {"jsonrpc": "2.0", "method": "websocket_only", "id": 1}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            consumer_with_methods.get_method(data, is_notification=False)
+            consumer_with_methods._get_method(data, is_notification=False)
 
         assert exc_info.value.code == JsonRpcErrorCode.METHOD_NOT_FOUND
 
@@ -388,6 +388,6 @@ class TestGetMethod:
         data = {"jsonrpc": "2.0", "method": "unknown", "id": 42}
 
         with pytest.raises(JsonRpcError) as exc_info:
-            consumer_with_methods.get_method(data, is_notification=False)
+            consumer_with_methods._get_method(data, is_notification=False)
 
         assert exc_info.value.rpc_id == 42

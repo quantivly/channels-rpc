@@ -27,7 +27,7 @@ class TestProcessCall:
         """Should return JSON-RPC response dict for method calls."""
         data = {"jsonrpc": "2.0", "method": "add", "params": {"a": 3, "b": 5}, "id": 1}
 
-        result = consumer_with_methods.process_call(data, is_notification=False)
+        result = consumer_with_methods._process_call(data, is_notification=False)
 
         assert isinstance(result, dict)
         assert result["jsonrpc"] == "2.0"
@@ -38,7 +38,7 @@ class TestProcessCall:
         """Should handle list parameters."""
         data = {"jsonrpc": "2.0", "method": "add", "params": [10, 20], "id": 2}
 
-        result = consumer_with_methods.process_call(data, is_notification=False)
+        result = consumer_with_methods._process_call(data, is_notification=False)
 
         assert result["result"] == 30
 
@@ -46,16 +46,16 @@ class TestProcessCall:
         """Should return None for notifications."""
         data = {"jsonrpc": "2.0", "method": "notify_event", "params": {"event": "test"}}
 
-        result = consumer_with_methods.process_call(data, is_notification=True)
+        result = consumer_with_methods._process_call(data, is_notification=True)
 
         assert result is None
 
     def test_process_call_calls_execute_method(self, consumer_with_methods, mocker):
-        """Should call execute_called_method with correct params."""
-        spy = mocker.spy(consumer_with_methods, "execute_called_method")
+        """Should call _execute_called_method with correct params."""
+        spy = mocker.spy(consumer_with_methods, "_execute_called_method")
         data = {"jsonrpc": "2.0", "method": "add", "params": {"a": 1, "b": 2}, "id": 1}
 
-        consumer_with_methods.process_call(data, is_notification=False)
+        consumer_with_methods._process_call(data, is_notification=False)
 
         assert spy.call_count == 1
 
@@ -63,7 +63,7 @@ class TestProcessCall:
         """Should handle methods with no params."""
         data = {"jsonrpc": "2.0", "method": "websocket_only", "id": 1}
 
-        result = consumer_with_methods.process_call(data, is_notification=False)
+        result = consumer_with_methods._process_call(data, is_notification=False)
 
         assert result["result"] == "websocket"
 
@@ -79,7 +79,7 @@ class TestExecuteCalledMethod:
         ]
         params = {"a": 5, "b": 3}
 
-        result = consumer_with_methods.execute_called_method(method, params)
+        result = consumer_with_methods._execute_called_method(method, params)
 
         assert result == 8
 
@@ -90,7 +90,7 @@ class TestExecuteCalledMethod:
         ]
         params = [7, 3]
 
-        result = consumer_with_methods.execute_called_method(method, params)
+        result = consumer_with_methods._execute_called_method(method, params)
 
         assert result == 10
 
@@ -101,7 +101,7 @@ class TestExecuteCalledMethod:
         ]
         params = {"message": "test"}
 
-        result = consumer_with_methods.execute_called_method(method, params)
+        result = consumer_with_methods._execute_called_method(method, params)
 
         assert "consumer: True" in result
 
@@ -112,7 +112,7 @@ class TestExecuteCalledMethod:
         ]
         params = {"a": 1, "b": 1}
 
-        result = consumer_with_methods.execute_called_method(method, params)
+        result = consumer_with_methods._execute_called_method(method, params)
 
         assert result == 2
 
@@ -125,7 +125,7 @@ class TestInterceptCall:
         """Should process valid JSON-RPC request."""
         data = {"jsonrpc": "2.0", "method": "add", "params": {"a": 1, "b": 2}, "id": 1}
 
-        result, is_notification = consumer_with_methods.intercept_call(data)
+        result, is_notification = consumer_with_methods._intercept_call(data)
 
         assert isinstance(result, dict)
         assert result["result"] == 3
@@ -139,14 +139,14 @@ class TestInterceptCall:
             "params": {"event": "test"},
         }
 
-        result, is_notification = consumer_with_methods.intercept_call(data)
+        result, is_notification = consumer_with_methods._intercept_call(data)
 
         assert result is None
         assert is_notification is True
 
     def test_intercept_call_with_empty_data(self, mock_rpc_consumer):
         """Should return JsonRpcErrorCode.INVALID_REQUEST error for empty data."""
-        result, is_notification = mock_rpc_consumer.intercept_call({})
+        result, is_notification = mock_rpc_consumer._intercept_call({})
 
         assert result["jsonrpc"] == "2.0"
         assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
@@ -154,7 +154,7 @@ class TestInterceptCall:
 
     def test_intercept_call_with_none_data(self, mock_rpc_consumer):
         """Should return JsonRpcErrorCode.INVALID_REQUEST error for None data."""
-        result, is_notification = mock_rpc_consumer.intercept_call(None)
+        result, is_notification = mock_rpc_consumer._intercept_call(None)
 
         assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
         assert is_notification is False
@@ -162,7 +162,7 @@ class TestInterceptCall:
     @pytest.mark.parametrize("invalid_data", [[], "string", 123, True])
     def test_intercept_call_with_invalid_type(self, mock_rpc_consumer, invalid_data):
         """Should return JsonRpcErrorCode.INVALID_REQUEST for non-dict data."""
-        result, is_notification = mock_rpc_consumer.intercept_call(invalid_data)
+        result, is_notification = mock_rpc_consumer._intercept_call(invalid_data)
 
         assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
         assert is_notification is False
@@ -171,7 +171,7 @@ class TestInterceptCall:
         """Should detect JSON-RPC response (has 'result' or 'error' field)."""
         response_data = {"jsonrpc": "2.0", "result": "success", "id": 1}
 
-        result, is_notification = mock_rpc_consumer.intercept_call(response_data)
+        result, is_notification = mock_rpc_consumer._intercept_call(response_data)
 
         assert result == response_data
         assert is_notification is True  # Response doesn't expect reply
@@ -184,7 +184,7 @@ class TestInterceptCall:
             "id": 1,
         }
 
-        result, is_notification = mock_rpc_consumer.intercept_call(error_data)
+        result, is_notification = mock_rpc_consumer._intercept_call(error_data)
 
         assert result == error_data
         assert is_notification is True
@@ -197,7 +197,7 @@ class TestInterceptCall:
             "id": 1,
         }
 
-        result, is_notification = consumer_with_methods.intercept_call(data)
+        result, is_notification = consumer_with_methods._intercept_call(data)
 
         assert "error" in result
         assert result["error"]["code"] == JsonRpcErrorCode.METHOD_NOT_FOUND
@@ -222,7 +222,7 @@ class TestInterceptCall:
         consumer = FailingConsumer()
         data = {"jsonrpc": "2.0", "method": "failing_method", "id": 1}
 
-        result, is_notification = consumer.intercept_call(data)
+        result, is_notification = consumer._intercept_call(data)
 
         assert "error" in result
         assert result["error"]["code"] == JsonRpcErrorCode.GENERIC_APPLICATION_ERROR
@@ -241,7 +241,7 @@ class TestInterceptCall:
         """
         data = {"jsonrpc": "1.0", "method": "test", "id": 42}
 
-        result, _ = consumer_with_methods.intercept_call(data)
+        result, _ = consumer_with_methods._intercept_call(data)
 
         assert result["id"] == 42
         assert result["error"]["code"] == JsonRpcErrorCode.INVALID_REQUEST
@@ -254,15 +254,15 @@ class TestInterceptCall:
         # Test various error paths to ensure is_notification is always defined
 
         # Empty data path
-        _, is_notification = mock_rpc_consumer.intercept_call({})
+        _, is_notification = mock_rpc_consumer._intercept_call({})
         assert is_notification is False
 
         # Invalid type path
-        _, is_notification = mock_rpc_consumer.intercept_call([])
+        _, is_notification = mock_rpc_consumer._intercept_call([])
         assert is_notification is False
 
         # Response path
-        _, is_notification = mock_rpc_consumer.intercept_call(
+        _, is_notification = mock_rpc_consumer._intercept_call(
             {"jsonrpc": "2.0", "result": "test", "id": 1}
         )
         assert is_notification is True
@@ -275,7 +275,7 @@ class TestInterceptCall:
             "params": {"event": "test"},
         }
 
-        _, is_notification = consumer_with_methods.intercept_call(data)
+        _, is_notification = consumer_with_methods._intercept_call(data)
 
         assert is_notification is True
 
@@ -283,7 +283,7 @@ class TestInterceptCall:
         """Should treat request with 'id' as method call."""
         data = {"jsonrpc": "2.0", "method": "add", "params": {"a": 1, "b": 2}, "id": 1}
 
-        _, is_notification = consumer_with_methods.intercept_call(data)
+        _, is_notification = consumer_with_methods._intercept_call(data)
 
         assert is_notification is False
 
@@ -302,7 +302,7 @@ class TestInterceptCall:
         consumer = FailingConsumer()
         data = {"jsonrpc": "2.0", "method": "method_with_args", "id": 1}
 
-        result, _ = consumer.intercept_call(data)
+        result, _ = consumer._intercept_call(data)
 
         # Security fix: exception details should not be leaked
         # data field is not included when None
@@ -323,7 +323,7 @@ class TestInterceptCall:
         consumer = FailingConsumer()
         data = {"jsonrpc": "2.0", "method": "method_with_multiple_args", "id": 1}
 
-        result, _ = consumer.intercept_call(data)
+        result, _ = consumer._intercept_call(data)
 
         # Security fix: exception details should not be leaked
         # data field is not included when None
@@ -392,14 +392,14 @@ class TestProcessingEdgeCases:
 
     def test_intercept_empty_dict_has_correct_rpc_id(self, mock_rpc_consumer):
         """Should use None rpc_id for empty dict (REGRESSION)."""
-        result, _ = mock_rpc_consumer.intercept_call({})
+        result, _ = mock_rpc_consumer._intercept_call({})
 
         # Empty dict has no id field, so rpc_id should be None
         assert result["id"] is None
 
     def test_intercept_invalid_type_has_none_rpc_id(self, mock_rpc_consumer):
         """Should use None rpc_id for invalid types."""
-        result, _ = mock_rpc_consumer.intercept_call("invalid")
+        result, _ = mock_rpc_consumer._intercept_call("invalid")
 
         assert result["id"] is None
 
@@ -417,7 +417,7 @@ class TestProcessingEdgeCases:
         consumer = TestConsumer()
         data = {"jsonrpc": "2.0", "method": "returns_none", "id": 1}
 
-        result = consumer.process_call(data, is_notification=False)
+        result = consumer._process_call(data, is_notification=False)
 
         # The deprecated create_json_rpc_frame might behave differently with None
         # Main thing is it returns a valid response dict
@@ -439,7 +439,7 @@ class TestProcessingEdgeCases:
         consumer = TestConsumer()
         data = {"jsonrpc": "2.0", "method": "returns_false", "id": 1}
 
-        result = consumer.process_call(data, is_notification=False)
+        result = consumer._process_call(data, is_notification=False)
 
         assert result is not None
         assert result["result"] is False
@@ -458,7 +458,7 @@ class TestProcessingEdgeCases:
         consumer = TestConsumer()
         data = {"jsonrpc": "2.0", "method": "returns_zero", "id": 1}
 
-        result = consumer.process_call(data, is_notification=False)
+        result = consumer._process_call(data, is_notification=False)
 
         assert result is not None
         assert result["result"] == 0
