@@ -317,7 +317,7 @@ class AsyncRpcBase(RpcBase):
 
     def _validate_request_id(
         self, rpc_id: str | int | float | None
-    ) -> tuple[dict[str, Any], bool] | tuple[None, None]:
+    ) -> tuple[dict[str, Any] | None, bool]:
         """Validate request ID length to prevent DoS attacks.
 
         Parameters
@@ -327,8 +327,8 @@ class AsyncRpcBase(RpcBase):
 
         Returns
         -------
-        tuple[dict[str, Any], bool] | tuple[None, None]
-            Error response and False if invalid, or (None, None) if valid.
+        tuple[dict[str, Any] | None, bool]
+            Error response and False if invalid, or (None, False) if valid.
         """
         if rpc_id is not None:
             rpc_id_str = str(rpc_id)
@@ -350,9 +350,9 @@ class AsyncRpcBase(RpcBase):
                     ),
                     False,
                 )
-        return None, None
+        return None, False
 
-    async def _apply_request_middleware(
+    async def _apply_request_middleware(  # type: ignore[override]
         self,
         data: dict[str, Any],
         rpc_id: str | int | float | None,
@@ -425,21 +425,21 @@ class AsyncRpcBase(RpcBase):
                 return None, error
         return data, None
 
-    async def _apply_response_middleware(
-        self, result: dict[str, Any], is_notification: bool  # noqa: FBT001
-    ) -> dict[str, Any]:
+    async def _apply_response_middleware(  # type: ignore[override]
+        self, result: dict[str, Any] | None, is_notification: bool  # noqa: FBT001
+    ) -> dict[str, Any] | None:
         """Apply response middleware chain in reverse order.
 
         Parameters
         ----------
-        result : dict[str, Any]
+        result : dict[str, Any] | None
             Response data to process.
         is_notification : bool
             Whether this is a notification.
 
         Returns
         -------
-        dict[str, Any]
+        dict[str, Any] | None
             Processed response.
         """
         if not is_notification and result is not None:
@@ -554,6 +554,10 @@ class AsyncRpcBase(RpcBase):
         is_notification = "id" not in data
         rpc_id = data.get("id") if not is_notification else None
 
+        # Type narrowing: method_name should be str after validation, but use cast for flexibility
+        if not isinstance(method_name, str):
+            method_name = str(method_name) if method_name is not None else ""
+
         # Validate request ID length to prevent DoS attacks
         error_response, should_return = self._validate_request_id(rpc_id)
         if error_response is not None:
@@ -584,6 +588,10 @@ class AsyncRpcBase(RpcBase):
         )
         if error is not None:
             return error, is_notification
+
+        # Type narrowing: If error is None, data must be valid
+        assert data is not None
+        assert isinstance(method_name, str)
 
         try:
             result = await self._process_call(data, is_notification=is_notification)

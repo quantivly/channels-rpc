@@ -158,9 +158,10 @@ class TestPermissionRequired:
         """Create a mock user object."""
         user = MagicMock()
         user.is_authenticated = is_authenticated
+        empty_perms: list[str] = []
         user.has_perms = MagicMock(
             return_value=all(
-                perm in permissions for perm in []  # Will be checked by actual call
+                perm in permissions for perm in empty_perms  # Will be checked by actual call
             )
         )
 
@@ -316,7 +317,7 @@ class TestPermissionRequired:
         )
 
         @permission_required("myapp.can_view")
-        def test_method(ctx: RpcContext, **kwargs) -> dict:  # type: ignore[misc]
+        def test_method(ctx: RpcContext, **kwargs) -> dict:
             return kwargs
 
         ctx = self.create_context(user=user)
@@ -425,7 +426,7 @@ class TestPermissionRequiredAsync:
         )
 
         @permission_required("myapp.can_process")
-        async def async_method(ctx: RpcContext, data: dict) -> dict:  # type: ignore[misc]
+        async def async_method(ctx: RpcContext, data: dict) -> dict:
             return {"processed": True, **data}
 
         ctx = self.create_context(user=user)
@@ -480,7 +481,7 @@ class TestPermissionRequiredIntegration:
 
         @TestConsumer.rpc_method()
         @permission_required("myapp.delete_user")
-        def delete_user(ctx: RpcContext, user_id: int) -> dict:  # type: ignore[misc]
+        def delete_user(ctx: RpcContext, user_id: int) -> dict:
             return {"deleted": True, "user_id": user_id}
 
         # Create consumer with authenticated user
@@ -517,7 +518,7 @@ class TestPermissionRequiredIntegration:
 
         @TestConsumer.rpc_method()
         @permission_required("myapp.delete_user")
-        def delete_user(ctx: RpcContext, user_id: int) -> dict:  # type: ignore[misc]
+        def delete_user(ctx: RpcContext, user_id: int) -> dict:
             return {"deleted": True, "user_id": user_id}
 
         consumer = TestConsumer(scope={"type": "websocket", "user": user})
@@ -551,7 +552,7 @@ class TestPermissionRequiredIntegration:
 
         @TestConsumer.rpc_method()
         @permission_required("myapp.view_data")
-        def view_data(ctx: RpcContext) -> dict:  # type: ignore[misc]
+        def view_data(ctx: RpcContext) -> dict:
             return {"data": "secret"}
 
         consumer = TestConsumer(scope={"type": "websocket", "user": user})

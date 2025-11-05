@@ -156,13 +156,13 @@ RPC_ERRORS: dict[int, str] = {
 
 
 def generate_error_response(
-    rpc_id: int | str | None, code: int, message: str, data=None
+    rpc_id: int | str | float | None, code: int, message: str, data=None
 ) -> dict[str, Any]:
     """Generate a JSON-RPC error response.
 
     Parameters
     ----------
-    rpc_id : int | str | None
+    rpc_id : int | str | float | None
         Request ID this error responds to.
     code : int
         RPC error code.
@@ -184,13 +184,13 @@ def generate_error_response(
 class JsonRpcError(Exception):
     """General JSON-RPC exception class."""
 
-    def __init__(self, rpc_id: str | int | None, code: int, data: Any = None):
+    def __init__(self, rpc_id: str | int | float | None, code: int, data: Any = None):
         """Initialize a new :class:`JsonRpcError` instance.
 
         Parameters
         ----------
-        rpc_id : str | int | None
-            Call ID. Can be a string, integer, or None for requests without an ID.
+        rpc_id : str | int | float | None
+            Call ID. Can be a string, integer, float, or None for requests without an ID.
         code : int
             RPC error code.
         data : Any, optional
@@ -267,12 +267,12 @@ class JsonRpcError(Exception):
 class RequestTooLargeError(JsonRpcError):
     """Exception for requests exceeding size limits."""
 
-    def __init__(self, rpc_id: str | int | None, limit_type: str, limit_value: int):
+    def __init__(self, rpc_id: str | int | float | None, limit_type: str, limit_value: int):
         """Initialize RequestTooLargeError.
 
         Parameters
         ----------
-        rpc_id : str | int | None
+        rpc_id : str | int | float | None
             Request ID.
         limit_type : str
             Type of limit exceeded (e.g., "message_size", "array_length").

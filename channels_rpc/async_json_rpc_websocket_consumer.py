@@ -64,7 +64,7 @@ class AsyncJsonRpcWebsocketConsumer(AsyncJsonWebsocketConsumer, AsyncRpcBase):
     json_encoder_class: type[json.JSONEncoder] | None = None
 
     @classmethod
-    async def encode_json(cls, data: dict[str, Any]) -> str:
+    async def encode_json(cls, data: dict[str, Any]) -> str:  # type: ignore[override]
         """Encode remote procedure call data with custom encoder support.
 
         Parameters

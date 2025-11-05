@@ -40,7 +40,7 @@ def create_json_rpc_request(
 
 
 def create_json_rpc_response(
-    rpc_id: str | int | None = None,
+    rpc_id: str | int | float | None = None,
     result: Any = None,
     error: dict[str, Any] | None = None,
     *,
@@ -50,7 +50,7 @@ def create_json_rpc_response(
 
     Parameters
     ----------
-    rpc_id : str | int | None
+    rpc_id : str | int | float | None
         Request identifier that this responds to.
     result : Any
         Successful result data.
@@ -80,7 +80,7 @@ def create_json_rpc_response(
 
 
 def create_json_rpc_error_response(
-    rpc_id: str | int | None = None,
+    rpc_id: str | int | float | None = None,
     code: int = -32603,
     message: str = "Internal error",
     data: Any = None,
@@ -89,7 +89,7 @@ def create_json_rpc_error_response(
 
     Parameters
     ----------
-    rpc_id : str | int | None
+    rpc_id : str | int | float | None
         Request identifier that this responds to.
     code : int
         Error code (see JSON-RPC 2.0 spec).

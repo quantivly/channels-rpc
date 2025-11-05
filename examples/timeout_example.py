@@ -16,6 +16,7 @@ django.setup()
 import asyncio
 
 from channels_rpc.async_rpc_base import AsyncRpcBase
+from channels_rpc.exceptions import JsonRpcError
 
 
 class TimeoutExampleConsumer(AsyncRpcBase):
@@ -101,7 +102,8 @@ async def main():
     }
     try:
         result1 = await consumer._process_call(request1)
-        print(f"   Success: {result1['result']}")
+        if result1 is not None:
+            print(f"   Success: {result1['result']}")
     except Exception as e:
         print(f"   Error: {e}")
 
@@ -115,7 +117,8 @@ async def main():
     }
     try:
         result2 = await consumer._process_call(request2)
-        print(f"   Success: {result2['result']}")
+        if result2 is not None:
+            print(f"   Success: {result2['result']}")
     except Exception as e:
         print(f"   Error: {e}")
 
@@ -130,7 +133,7 @@ async def main():
     try:
         result3 = await consumer._process_call(request3)
         print(f"   Success: {result3}")
-    except Exception as e:
+    except JsonRpcError as e:
         print(f"   Expected timeout error: {type(e).__name__}")
         error_dict = e.as_dict()
         print(f"   Error message: {error_dict['error']['message']}")
@@ -145,7 +148,8 @@ async def main():
     }
     try:
         result4 = await consumer._process_call(request4)
-        print(f"   Success: {result4['result']}")
+        if result4 is not None:
+            print(f"   Success: {result4['result']}")
     except Exception as e:
         print(f"   Error: {e}")
 
@@ -159,7 +163,8 @@ async def main():
     }
     try:
         result5 = await consumer._process_call(request5)
-        print(f"   Success: {result5['result']}")
+        if result5 is not None:
+            print(f"   Success: {result5['result']}")
     except Exception as e:
         print(f"   Error: {e}")
 

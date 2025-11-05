@@ -84,15 +84,18 @@ Django signals do not support async receivers.
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
+
+if TYPE_CHECKING:
+    from django.dispatch import Signal
 
 try:
-    from django.dispatch import Signal
+    from django.dispatch import Signal as DjangoSignal
 
     _DJANGO_AVAILABLE = True
 
     # RPC method lifecycle signals
-    rpc_method_started: Signal = Signal()
+    rpc_method_started: Union["Signal", "DummySignal"] = DjangoSignal()
     """Sent when an RPC method starts executing.
 
     Arguments:
@@ -103,7 +106,7 @@ try:
         rpc_id (str | int | None): Request ID
     """
 
-    rpc_method_completed: Signal = Signal()
+    rpc_method_completed: Union["Signal", "DummySignal"] = DjangoSignal()
     """Sent when an RPC method completes successfully.
 
     Arguments:
@@ -115,7 +118,7 @@ try:
         duration (float): Execution time in seconds
     """
 
-    rpc_method_failed: Signal = Signal()
+    rpc_method_failed: Union["Signal", "DummySignal"] = DjangoSignal()
     """Sent when an RPC method raises an error.
 
     Arguments:
@@ -128,7 +131,7 @@ try:
     """
 
     # WebSocket connection lifecycle signals
-    rpc_client_connected: Signal = Signal()
+    rpc_client_connected: Union["Signal", "DummySignal"] = DjangoSignal()
     """Sent when a WebSocket client connects.
 
     Arguments:
@@ -137,7 +140,7 @@ try:
         scope (dict): ASGI connection scope
     """
 
-    rpc_client_disconnected: Signal = Signal()
+    rpc_client_disconnected: Union["Signal", "DummySignal"] = DjangoSignal()
     """Sent when a WebSocket client disconnects.
 
     Arguments:

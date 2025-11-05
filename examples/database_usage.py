@@ -65,7 +65,7 @@ def get_current_user(ctx):
     from channels_rpc import RpcContext
 
     # Type hint for IDE support (optional, can also be in function signature)
-    ctx: RpcContext
+    # ctx is typed through the function signature or can be annotated inline
 
     # Access consumer scope for session data, authenticated user, etc.
     session = ctx.scope.get("session", {})

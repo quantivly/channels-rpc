@@ -99,6 +99,7 @@ class TestTimeoutEnforcement:
         method = registry.get_method(
             async_consumer_with_timeout_methods.__class__, "default_timeout_method"
         )
+        assert method is not None
 
         # Verify wrapper has None for timeout (will use default)
         assert method.timeout is None
@@ -124,6 +125,7 @@ class TestTimeoutEnforcement:
         method = registry.get_method(
             async_consumer_with_timeout_methods.__class__, "custom_timeout_method"
         )
+        assert method is not None
 
         # Verify wrapper has custom timeout
         assert method.timeout == 1.0
@@ -181,6 +183,7 @@ class TestTimeoutEnforcement:
         method = registry.get_method(
             async_consumer_with_timeout_methods.__class__, "no_timeout_method"
         )
+        assert method is not None
 
         # Verify wrapper has timeout=0
         assert method.timeout == 0
@@ -208,6 +211,7 @@ class TestTimeoutEnforcement:
         method = registry.get_method(
             async_consumer_with_timeout_methods.__class__, "negative_timeout_method"
         )
+        assert method is not None
 
         # Verify wrapper has negative timeout
         assert method.timeout == -1
@@ -234,6 +238,7 @@ class TestTimeoutEnforcement:
             async_consumer_with_timeout_methods.__class__,
             "database_method_with_timeout",
         )
+        assert method is not None
 
         # Verify wrapper has custom timeout
         assert method.timeout == 0.5
@@ -342,18 +347,21 @@ class TestTimeoutConfiguration:
         method = registry.get_method(
             async_consumer_with_timeout_methods.__class__, "default_timeout_method"
         )
+        assert method is not None
         assert method.timeout is None
 
         # Check custom timeout
         method = registry.get_method(
             async_consumer_with_timeout_methods.__class__, "custom_timeout_method"
         )
+        assert method is not None
         assert method.timeout == 1.0
 
         # Check disabled timeout
         method = registry.get_method(
             async_consumer_with_timeout_methods.__class__, "no_timeout_method"
         )
+        assert method is not None
         assert method.timeout == 0
 
     @pytest.mark.asyncio

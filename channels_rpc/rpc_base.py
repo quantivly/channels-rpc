@@ -883,20 +883,20 @@ class RpcBase:
         return data, None
 
     def _apply_response_middleware(
-        self, result: dict[str, Any], is_notification: bool
-    ) -> dict[str, Any]:
+        self, result: dict[str, Any] | None, is_notification: bool
+    ) -> dict[str, Any] | None:
         """Apply response middleware chain in reverse order.
 
         Parameters
         ----------
-        result : dict[str, Any]
+        result : dict[str, Any] | None
             Response data to process.
         is_notification : bool
             Whether this is a notification.
 
         Returns
         -------
-        dict[str, Any]
+        dict[str, Any] | None
             Processed response.
         """
         if not is_notification and result is not None:
@@ -999,6 +999,10 @@ class RpcBase:
         is_notification = "id" not in data
         rpc_id = data.get("id") if not is_notification else None
 
+        # Type narrowing: method_name should be str after validation, but use cast for flexibility
+        if not isinstance(method_name, str):
+            method_name = str(method_name) if method_name is not None else ""
+
         logger.debug(logs.CALL_INTERCEPTED, data)
 
         if rpc_id:
@@ -1019,11 +1023,16 @@ class RpcBase:
         )
 
         # Apply request middleware
-        data, error = self._apply_request_middleware(
+        processed_data, error = self._apply_request_middleware(
             data, rpc_id, method_name, start_time, is_notification
         )
         if error is not None:
             return error, is_notification
+
+        # Type narrowing: If error is None, processed_data must be valid
+        assert processed_data is not None
+        data = processed_data  # Now data is guaranteed to be non-None
+        assert isinstance(method_name, str)
 
         try:
             result = self._process_call(data, is_notification=is_notification)
