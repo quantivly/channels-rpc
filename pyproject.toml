@@ -8,11 +8,11 @@ version = "1.0.0"
 [tool.poetry.dependencies]
 python = ">=3.10"
 channels = "^4.0.0"
+django = "^4.2.6"
 
 [tool.poetry.group.dev.dependencies]
 aiounittest = "^1.4.2"
 black = "^23.10.0"
-django = "^4.2.6"
 ipython = "^8.14.0"
 mypy = "^1.0.0"
 pre-commit = "^3.3.2"
