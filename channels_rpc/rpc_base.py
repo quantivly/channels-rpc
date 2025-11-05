@@ -861,7 +861,7 @@ class RpcBase:
                 raise
             except Exception as e:
                 # Catch middleware errors and convert to internal error
-                from channels_rpc.config import get_config
+                from channels_rpc.config import get_config  # noqa: PLC0415
 
                 config = get_config()
 
@@ -917,7 +917,7 @@ class RpcBase:
                     result = mw.process_response(result, self)
                 except Exception as e:
                     # Log middleware errors but continue with original response
-                    from channels_rpc.config import get_config
+                    from channels_rpc.config import get_config  # noqa: PLC0415
 
                     config = get_config()
 
@@ -985,7 +985,7 @@ class RpcBase:
             )
         else:
             # Unexpected errors - these indicate bugs
-            from channels_rpc.config import get_config
+            from channels_rpc.config import get_config  # noqa: PLC0415
 
             config = get_config()
 

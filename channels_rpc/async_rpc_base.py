@@ -250,7 +250,7 @@ class AsyncRpcBase(RpcBase):
     async def _process_call(  # type: ignore[override]
         self, data: dict[str, Any], *, is_notification: bool = False
     ) -> dict[str, Any] | None:
-        from channels_rpc.context import RpcContext
+        from channels_rpc.context import RpcContext  # noqa: PLC0415
 
         method = self._get_method(data, is_notification=is_notification)
         params = self._get_params(data)
@@ -468,7 +468,7 @@ class AsyncRpcBase(RpcBase):
                 raise
             except Exception as e:
                 # Catch middleware errors and convert to internal error
-                from channels_rpc.config import get_config
+                from channels_rpc.config import get_config  # noqa: PLC0415
 
                 config = get_config()
 
@@ -528,7 +528,7 @@ class AsyncRpcBase(RpcBase):
                     result = processed_result
                 except Exception as e:
                     # Log middleware errors but continue with original response
-                    from channels_rpc.config import get_config
+                    from channels_rpc.config import get_config  # noqa: PLC0415
 
                     config = get_config()
 
@@ -597,7 +597,7 @@ class AsyncRpcBase(RpcBase):
         else:
             # Unexpected errors - these indicate bugs
             # Check if we should sanitize errors (production mode)
-            from channels_rpc.config import get_config
+            from channels_rpc.config import get_config  # noqa: PLC0415
 
             config = get_config()
 

@@ -43,7 +43,7 @@ _config = None
 
 def _get_config():
     """Lazy-load configuration."""
-    global _config
+    global _config  # noqa: PLW0603
     if _config is None:
         _config = get_config()
     return _config

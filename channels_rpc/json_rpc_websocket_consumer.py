@@ -48,7 +48,7 @@ class JsonRpcWebsocketConsumer(JsonWebsocketConsumer, RpcBase):
         parsing fails, sends an error response and returns an empty dict to
         avoid breaking the receive chain.
         """
-        from channels_rpc.config import get_config
+        from channels_rpc.config import get_config  # noqa: PLC0415
 
         # Get max message size from config
         max_size = get_config().limits.max_message_size
