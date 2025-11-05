@@ -29,7 +29,9 @@ Monitor RPC method execution times::
     def on_method_started(sender, consumer, method_name, rpc_id, **kwargs):
         execution_times[rpc_id] = time.time()
 
-    def on_method_completed(sender, consumer, method_name, result, rpc_id, duration, **kwargs):
+    def on_method_completed(
+        sender, consumer, method_name, result, rpc_id, duration, **kwargs
+    ):
         if rpc_id in execution_times:
             actual_duration = time.time() - execution_times[rpc_id]
             print(f"{method_name} took {actual_duration:.3f}s")
@@ -162,7 +164,7 @@ except ImportError:
             self,
             receiver: Any = None,
             sender: Any = None,
-            weak: bool = True,
+            weak: bool = True,  # noqa: FBT001, FBT002
             dispatch_uid: Any = None,
         ) -> None:
             """No-op connect method."""
@@ -174,11 +176,11 @@ except ImportError:
             """No-op disconnect method."""
             pass
 
-        def send(self, sender: Any, **kwargs: Any) -> list:
+        def send(self, sender: Any, **kwargs: Any) -> list:  # noqa: ARG002
             """No-op send method."""
             return []
 
-        def send_robust(self, sender: Any, **kwargs: Any) -> list:
+        def send_robust(self, sender: Any, **kwargs: Any) -> list:  # noqa: ARG002
             """No-op send_robust method."""
             return []
 

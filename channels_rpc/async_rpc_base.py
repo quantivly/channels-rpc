@@ -602,11 +602,11 @@ class AsyncRpcBase(RpcBase):
             config = get_config()
 
             if config.sanitize_errors:
-                # Production mode: Log without stack trace to avoid information disclosure
+                # Production: Log without stack trace to avoid information disclosure
                 logger.error(
                     "Unexpected error processing RPC call '%s': %s",
                     method_name,
-                    f"{type(exception).__name__}: {str(exception)[:200]}",  # Truncate to 200 chars
+                    f"{type(exception).__name__}: {str(exception)[:200]}",
                 )
             else:
                 # Development mode: Log with full stack trace for debugging
@@ -657,7 +657,8 @@ class AsyncRpcBase(RpcBase):
         is_notification = "id" not in data
         rpc_id = data.get("id") if not is_notification else None
 
-        # Type narrowing: method_name should be str after validation, but use cast for flexibility
+        # Type narrowing: method_name should be str after validation
+        # Use cast for flexibility
         if not isinstance(method_name, str):
             method_name = str(method_name) if method_name is not None else ""
 

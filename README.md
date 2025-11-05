@@ -154,34 +154,34 @@ $ pip install git+ssh://git@github.com/quantivly/channels-rpc.git
 
 ## Use
 
-It is intended to be used as a WebSocket consumer:
+It is intended to be used as a WebSocket consumer. Use the async consumer `AsyncJsonRpcWebsocketConsumer`:
 
 ```python
-from channels_rpc import JsonRpcWebsocketConsumer
+from channels_rpc import AsyncJsonRpcWebsocketConsumer
 
-class MyJsonRpcConsumer(JsonRpcWebsocketConsumer):
+class MyJsonRpcConsumer(AsyncJsonRpcWebsocketConsumer):
 
-    def connect(self, message, **kwargs):
+    async def connect(self):
         """Perform things on WebSocket connection start"""
-        self.accept()
+        await self.accept()
         print("connect")
         # Do stuff if needed
 
-    def disconnect(self, message, **kwargs):
+    async def disconnect(self, code):
         """Perform things on WebSocket connection close"""
         print("disconnect")
         # Do stuff if needed
 
 ```
 
-JsonRpcWebsocketConsumer derives from `channels`
-[JsonWebsocketConsumer](https://channels.readthedocs.io/en/latest/topics/consumers.html#websocketconsumer).
-Then, the last step is to create the RPC methos hooks using the `rpc_method`
+AsyncJsonRpcWebsocketConsumer derives from `channels`
+[AsyncJsonWebsocketConsumer](https://channels.readthedocs.io/en/latest/topics/consumers.html#asyncjsonwebsocketconsumer).
+Then, the last step is to create the RPC method hooks using the `rpc_method`
 decorator:
 
 ```python
 @MyJsonRpcConsumer.rpc_method()
-def ping():
+async def ping():
     return "pong"
 ```
 
@@ -189,7 +189,7 @@ Or, with a custom name:
 
 ```python
 @MyJsonRpcConsumer.rpc_method("mymodule.rpc.ping")
-def ping():
+async def ping():
     return "pong"
 ```
 
@@ -208,29 +208,13 @@ RPC methods can obviously accept parameters. They also return "results" or "erro
 
 ```python
 @MyJsonRpcConsumer.rpc_method("mymodule.rpc.ping")
-def ping(fake_an_error):
+async def ping(fake_an_error):
     if fake_an_error:
         # Will return an error to the client
         #  --> {"id":1, "jsonrpc":"2.0","method":"mymodule.rpc.ping","params":{}} #  <-- {"id": 1, "jsonrpc": "2.0", "error": {"message": "fake_error", "code": -32000, "data": ["fake_error"]}}  raise Exception("fake_error")
     else:
         # Will return a result to the client
         #  --> {"id":1, "jsonrpc":"2.0","method":"mymodule.rpc.ping","params":{}} #  <-- {"id": 1, "jsonrpc": "2.0", "result": "pong"}  return "pong"
-```
-
-## Async Use
-
-Simply derive your customer from an asynchronous customer like
-`AsyncJsonRpcWebsocketConsumer`:
-
-```python
-from channels_rpc import AsyncJsonRpcWebsocketConsumer
-
-class MyAsyncJsonRpcConsumer(AsyncJsonRpcWebsocketConsumer):
-	pass
-
-@MyAsyncJsonRpcConsumer.rpc_method("mymodule.rpc.ping")
-async def ping(fake_an_error):
-    return "ping"
 ```
 
 ## Database Access in Async Methods
@@ -275,7 +259,7 @@ RPC methods can access the consumer instance, request metadata, and Django Chann
 from channels_rpc import RpcContext
 
 @MyJsonRpcConsumer.rpc_method()
-def json_rpc_method(ctx: RpcContext, param1: str):
+async def json_rpc_method(ctx: RpcContext, param1: str):
     # Access the consumer instance
     consumer = ctx.consumer
 
@@ -294,16 +278,13 @@ def json_rpc_method(ctx: RpcContext, param1: str):
 **Complete Example:**
 
 ```python
-from channels_rpc import JsonRpcWebsocketConsumer, RpcContext
+from channels_rpc import AsyncJsonRpcWebsocketConsumer, RpcContext
 
-class MyJsonRpcConsumer(JsonRpcWebsocketConsumer):
-    # Set to True to automatically port users from HTTP cookies
-    # (you don't need channel_session_user, this implies it)
-    # https://channels.readthedocs.io/en/stable/generics.html#websockets
-    http_user = True
+class MyJsonRpcConsumer(AsyncJsonRpcWebsocketConsumer):
+    pass
 
 @MyJsonRpcConsumer.rpc_method()
-def ping(ctx: RpcContext):
+async def ping(ctx: RpcContext):
     # Access session through context
     ctx.scope["session"]["test"] = True
 
@@ -313,7 +294,7 @@ def ping(ctx: RpcContext):
     return "pong"
 
 @MyJsonRpcConsumer.rpc_method()
-def get_user_info(ctx: RpcContext):
+async def get_user_info(ctx: RpcContext):
     # Access authenticated user from scope
     user = ctx.scope.get("user")
     if user and user.is_authenticated:
@@ -405,6 +386,8 @@ Error responses never leak internal details:
 Call `self.validate_scope()` in your `connect()` method to validate WebSocket connection metadata:
 
 ```python
+from channels_rpc import AsyncJsonRpcWebsocketConsumer
+
 class MyJsonRpcConsumer(AsyncJsonRpcWebsocketConsumer):
     async def connect(self):
         self.validate_scope()  # Validates scope structure

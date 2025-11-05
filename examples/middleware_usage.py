@@ -17,7 +17,11 @@ if not settings.configured:
     )
     django.setup()
 
-from channels_rpc import JsonRpcError, JsonRpcErrorCode, JsonRpcWebsocketConsumer
+from channels_rpc import (
+    AsyncJsonRpcWebsocketConsumer,
+    JsonRpcError,
+    JsonRpcErrorCode,
+)
 from channels_rpc.middleware import RpcMiddleware
 
 
@@ -46,13 +50,13 @@ class RateLimitMiddleware:
         return response
 
 
-class TestConsumer(JsonRpcWebsocketConsumer):
+class TestConsumer(AsyncJsonRpcWebsocketConsumer):
     """Test consumer with middleware."""
 
     middleware = [RateLimitMiddleware()]
 
-    @JsonRpcWebsocketConsumer.rpc_method()
-    def test_method(self, value: int):
+    @AsyncJsonRpcWebsocketConsumer.rpc_method()
+    async def test_method(self, value: int):
         """Test RPC method."""
         return {"result": value * 2}
 

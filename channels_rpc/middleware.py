@@ -140,7 +140,7 @@ class RpcMiddleware(Protocol):
     """
 
     def process_request(
-        self, data: dict[str, Any], consumer: Any
+        self, data: dict[str, Any], consumer: Any  # noqa: ARG002
     ) -> dict[str, Any] | None:
         """Process request before method execution.
 
@@ -177,7 +177,7 @@ class RpcMiddleware(Protocol):
         return data
 
     def process_response(
-        self, response: dict[str, Any], consumer: Any
+        self, response: dict[str, Any], consumer: Any  # noqa: ARG002
     ) -> dict[str, Any]:
         """Process response before sending to client.
 
@@ -256,7 +256,9 @@ class LoggingMiddleware:
         self.logger = logging.getLogger(logger_name)
         self.log_params = log_params
 
-    def process_request(self, data: dict[str, Any], consumer: Any) -> dict[str, Any]:
+    def process_request(
+        self, data: dict[str, Any], consumer: Any  # noqa: ARG002
+    ) -> dict[str, Any]:
         """Log RPC method call.
 
         Parameters
@@ -285,7 +287,7 @@ class LoggingMiddleware:
         return data
 
     def process_response(
-        self, response: dict[str, Any], consumer: Any
+        self, response: dict[str, Any], consumer: Any  # noqa: ARG002
     ) -> dict[str, Any]:
         """Log RPC method response.
 

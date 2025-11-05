@@ -818,7 +818,7 @@ class RpcBase:
         rpc_id: str | int | float | None,
         method_name: str,
         start_time: float,
-        is_notification: bool,
+        is_notification: bool,  # noqa: ARG002
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Apply request middleware chain.
 
@@ -895,7 +895,7 @@ class RpcBase:
         return data, None
 
     def _apply_response_middleware(
-        self, result: dict[str, Any] | None, is_notification: bool
+        self, result: dict[str, Any] | None, is_notification: bool  # noqa: FBT001
     ) -> dict[str, Any] | None:
         """Apply response middleware chain in reverse order.
 
@@ -1037,7 +1037,8 @@ class RpcBase:
         is_notification = "id" not in data
         rpc_id = data.get("id") if not is_notification else None
 
-        # Type narrowing: method_name should be str after validation, but use cast for flexibility
+        # Type narrowing: method_name should be str after validation
+        # Use cast for flexibility
         if not isinstance(method_name, str):
             method_name = str(method_name) if method_name is not None else ""
 
@@ -1075,7 +1076,7 @@ class RpcBase:
         try:
             result = self._process_call(data, is_notification=is_notification)
 
-            # Apply response middleware (in reverse order, only for non-notifications with results)
+            # Apply response middleware (reverse order, non-notifications only)
             result = self._apply_response_middleware(result, is_notification)
 
             # Emit signal for successful completion

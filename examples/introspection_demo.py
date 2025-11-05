@@ -21,18 +21,18 @@ import django
 
 django.setup()
 
+from channels_rpc import AsyncJsonRpcWebsocketConsumer
 from channels_rpc.context import RpcContext
-from channels_rpc.json_rpc_websocket_consumer import JsonRpcWebsocketConsumer
 
 
-class DemoConsumer(JsonRpcWebsocketConsumer):
+class DemoConsumer(AsyncJsonRpcWebsocketConsumer):
     """Example consumer with various RPC methods for introspection demo."""
 
     pass
 
 
 @DemoConsumer.rpc_method()
-def get_user(self, user_id: int) -> dict[str, Any]:
+async def get_user(self, user_id: int) -> dict[str, Any]:
     """Get user information by ID.
 
     Parameters
@@ -47,7 +47,7 @@ def get_user(self, user_id: int) -> dict[str, Any]:
 
     Examples
     --------
-    >>> consumer.get_user(user_id=123)
+    >>> await consumer.get_user(user_id=123)
     {'id': 123, 'name': 'John Doe', 'email': 'john@example.com'}
     """
     return {
@@ -58,7 +58,7 @@ def get_user(self, user_id: int) -> dict[str, Any]:
 
 
 @DemoConsumer.rpc_method()
-def create_resource(
+async def create_resource(
     self,
     ctx: RpcContext,
     name: str,
@@ -96,7 +96,7 @@ def create_resource(
 
 
 @DemoConsumer.rpc_method(websocket=True)
-def stream_data(self, channel: str, limit: int = 100) -> dict[str, Any]:
+async def stream_data(self, channel: str, limit: int = 100) -> dict[str, Any]:
     """Stream data from a channel (WebSocket only).
 
     Parameters
@@ -119,7 +119,7 @@ def stream_data(self, channel: str, limit: int = 100) -> dict[str, Any]:
 
 
 @DemoConsumer.rpc_notification()
-def log_event(self, event_type: str, data: dict[str, Any]) -> None:
+async def log_event(self, event_type: str, data: dict[str, Any]) -> None:
     """Log an event (notification handler).
 
     Parameters
@@ -166,9 +166,8 @@ def main() -> None:
     print(f"Is Notification: {info.is_notification}")
     print(f"Transport Options: {info.transport_options}")
     print(f"Signature: {info.signature}")
-    print(
-        f"Docstring (first 100 chars): {info.docstring[:100] if info.docstring else 'None'}..."
-    )
+    docstring_preview = info.docstring[:100] if info.docstring else "None"
+    print(f"Docstring (first 100 chars): {docstring_preview}...")
     print()
 
     # Get info about a notification

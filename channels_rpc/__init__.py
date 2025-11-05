@@ -7,7 +7,6 @@ Public API
 ----------
 Consumers:
     - AsyncJsonRpcWebsocketConsumer: Async WebSocket JSON-RPC consumer
-    - JsonRpcWebsocketConsumer: Sync WebSocket JSON-RPC consumer
 
 Context:
     - RpcContext: Execution context for RPC methods
@@ -63,7 +62,6 @@ from channels_rpc.exceptions import (
     JsonRpcErrorCode,
     RequestTooLargeError,
 )
-from channels_rpc.json_rpc_websocket_consumer import JsonRpcWebsocketConsumer
 from channels_rpc.limits import check_size_limits
 from channels_rpc.middleware import LoggingMiddleware, RpcMiddleware
 
@@ -71,7 +69,6 @@ __all__ = [
     "AsyncJsonRpcWebsocketConsumer",
     "JsonRpcError",
     "JsonRpcErrorCode",
-    "JsonRpcWebsocketConsumer",
     "LoggingMiddleware",
     "RequestTooLargeError",
     "RpcContext",

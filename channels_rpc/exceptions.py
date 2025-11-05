@@ -190,7 +190,8 @@ class JsonRpcError(Exception):
         Parameters
         ----------
         rpc_id : str | int | float | None
-            Call ID. Can be a string, integer, float, or None for requests without an ID.
+            Call ID. Can be a string, integer, float, or None for requests
+            without an ID.
         code : int
             RPC error code.
         data : Any, optional
@@ -247,7 +248,10 @@ class JsonRpcError(Exception):
             ):
                 if "timeout" in self.data:
                     timeout = self.data["timeout"]
-                    message = f"{message}: Method execution timed out after {timeout:.1f} seconds"
+                    message = (
+                        f"{message}: Method execution timed out "
+                        f"after {timeout:.1f} seconds"
+                    )
 
         return generate_error_response(
             rpc_id=self.rpc_id, code=self.code, message=message, data=self.data
