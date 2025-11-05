@@ -161,7 +161,8 @@ class TestPermissionRequired:
         empty_perms: list[str] = []
         user.has_perms = MagicMock(
             return_value=all(
-                perm in permissions for perm in empty_perms  # Will be checked by actual call
+                perm in permissions
+                for perm in empty_perms  # Will be checked by actual call
             )
         )
 

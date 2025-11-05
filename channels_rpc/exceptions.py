@@ -267,7 +267,9 @@ class JsonRpcError(Exception):
 class RequestTooLargeError(JsonRpcError):
     """Exception for requests exceeding size limits."""
 
-    def __init__(self, rpc_id: str | int | float | None, limit_type: str, limit_value: int):
+    def __init__(
+        self, rpc_id: str | int | float | None, limit_type: str, limit_value: int
+    ):
         """Initialize RequestTooLargeError.
 
         Parameters

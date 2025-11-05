@@ -95,7 +95,7 @@ try:
     _DJANGO_AVAILABLE = True
 
     # RPC method lifecycle signals
-    rpc_method_started: Union["Signal", "DummySignal"] = DjangoSignal()
+    rpc_method_started: Signal | DummySignal = DjangoSignal()
     """Sent when an RPC method starts executing.
 
     Arguments:
@@ -106,7 +106,7 @@ try:
         rpc_id (str | int | None): Request ID
     """
 
-    rpc_method_completed: Union["Signal", "DummySignal"] = DjangoSignal()
+    rpc_method_completed: Signal | DummySignal = DjangoSignal()
     """Sent when an RPC method completes successfully.
 
     Arguments:
@@ -118,7 +118,7 @@ try:
         duration (float): Execution time in seconds
     """
 
-    rpc_method_failed: Union["Signal", "DummySignal"] = DjangoSignal()
+    rpc_method_failed: Signal | DummySignal = DjangoSignal()
     """Sent when an RPC method raises an error.
 
     Arguments:
@@ -131,7 +131,7 @@ try:
     """
 
     # WebSocket connection lifecycle signals
-    rpc_client_connected: Union["Signal", "DummySignal"] = DjangoSignal()
+    rpc_client_connected: Signal | DummySignal = DjangoSignal()
     """Sent when a WebSocket client connects.
 
     Arguments:
@@ -140,7 +140,7 @@ try:
         scope (dict): ASGI connection scope
     """
 
-    rpc_client_disconnected: Union["Signal", "DummySignal"] = DjangoSignal()
+    rpc_client_disconnected: Signal | DummySignal = DjangoSignal()
     """Sent when a WebSocket client disconnects.
 
     Arguments:

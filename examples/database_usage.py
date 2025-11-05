@@ -66,7 +66,6 @@ def get_current_user(ctx):
 
     # Type hint for IDE support (optional, can also be in function signature)
     # ctx is typed through the function signature or can be annotated inline
-
     # Access consumer scope for session data, authenticated user, etc.
     session = ctx.scope.get("session", {})
     user_id = session.get("user_id")
