@@ -48,7 +48,10 @@ class JsonRpcWebsocketConsumer(JsonWebsocketConsumer, RpcBase):
         parsing fails, sends an error response and returns an empty dict to
         avoid breaking the receive chain.
         """
-        from channels_rpc.limits import MAX_MESSAGE_SIZE
+        from channels_rpc.config import get_config
+
+        # Get max message size from config
+        max_size = get_config().limits.max_message_size
 
         # Check raw message size BEFORE parsing to prevent DoS
         if isinstance(data, bytes):
@@ -58,11 +61,11 @@ class JsonRpcWebsocketConsumer(JsonWebsocketConsumer, RpcBase):
         else:
             size = len(data)
 
-        if size > MAX_MESSAGE_SIZE:
+        if size > max_size:
             frame = generate_error_response(
                 None,
                 JsonRpcErrorCode.REQUEST_TOO_LARGE,
-                f"Message size {size} exceeds limit of {MAX_MESSAGE_SIZE} bytes",
+                f"Message size {size} exceeds limit of {max_size} bytes",
             )
             self.send_json(frame)
             return {}

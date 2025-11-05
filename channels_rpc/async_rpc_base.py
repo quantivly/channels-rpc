@@ -360,9 +360,7 @@ class AsyncRpcBase(RpcBase):
         if len(self._recent_request_ids) > 10000:
             cutoff = current_time - self._request_id_cooldown
             self._recent_request_ids = {
-                k: v
-                for k, v in self._recent_request_ids.items()
-                if v >= cutoff
+                k: v for k, v in self._recent_request_ids.items() if v >= cutoff
             }
 
         # Check for collision
@@ -470,9 +468,21 @@ class AsyncRpcBase(RpcBase):
                 raise
             except Exception as e:
                 # Catch middleware errors and convert to internal error
-                logger.exception(
-                    "Middleware error in process_request: %s", mw.__class__.__name__
-                )
+                from channels_rpc.config import get_config
+
+                config = get_config()
+
+                if config.sanitize_errors:
+                    logger.error(
+                        "Middleware error in process_request: %s - %s: %s",
+                        mw.__class__.__name__,
+                        type(e).__name__,
+                        str(e)[:200],  # Truncate to avoid leaking sensitive data
+                    )
+                else:
+                    logger.exception(
+                        "Middleware error in process_request: %s", mw.__class__.__name__
+                    )
                 duration = time.time() - start_time
                 rpc_method_failed.send(
                     sender=self.__class__,
@@ -516,12 +526,24 @@ class AsyncRpcBase(RpcBase):
                     if asyncio.iscoroutine(processed_result):
                         processed_result = await processed_result
                     result = processed_result
-                except Exception:
+                except Exception as e:
                     # Log middleware errors but continue with original response
-                    logger.exception(
-                        "Middleware error in process_response: %s",
-                        mw.__class__.__name__,
-                    )
+                    from channels_rpc.config import get_config
+
+                    config = get_config()
+
+                    if config.sanitize_errors:
+                        logger.error(
+                            "Middleware error in process_response: %s - %s: %s",
+                            mw.__class__.__name__,
+                            type(e).__name__,
+                            str(e)[:200],
+                        )
+                    else:
+                        logger.exception(
+                            "Middleware error in process_response: %s",
+                            mw.__class__.__name__,
+                        )
         return result
 
     def _handle_rpc_exception(
@@ -574,7 +596,22 @@ class AsyncRpcBase(RpcBase):
             )
         else:
             # Unexpected errors - these indicate bugs
-            logger.exception("Unexpected error processing RPC call")
+            # Check if we should sanitize errors (production mode)
+            from channels_rpc.config import get_config
+
+            config = get_config()
+
+            if config.sanitize_errors:
+                # Production mode: Log without stack trace to avoid information disclosure
+                logger.error(
+                    "Unexpected error processing RPC call '%s': %s",
+                    method_name,
+                    f"{type(exception).__name__}: {str(exception)[:200]}",  # Truncate to 200 chars
+                )
+            else:
+                # Development mode: Log with full stack trace for debugging
+                logger.exception("Unexpected error processing RPC call")
+
             return generate_error_response(
                 rpc_id=rpc_id,
                 code=JsonRpcErrorCode.INTERNAL_ERROR,
@@ -634,7 +671,8 @@ class AsyncRpcBase(RpcBase):
             self._check_request_id_collision(rpc_id)
         except JsonRpcError as e:
             logger.warning(
-                "Request ID collision detected: %s", e.data.get("error") if e.data else "unknown"
+                "Request ID collision detected: %s",
+                e.data.get("error") if e.data else "unknown",
             )
             return e.as_dict(), False
 

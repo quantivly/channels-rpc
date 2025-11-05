@@ -21,13 +21,9 @@ import pytest
 from channels.testing import WebsocketCommunicator
 
 from channels_rpc import AsyncJsonRpcWebsocketConsumer
+from channels_rpc.config import get_config
 from channels_rpc.context import RpcContext
-from channels_rpc.limits import (
-    MAX_ARRAY_LENGTH,
-    MAX_METHOD_NAME_LENGTH,
-    MAX_STRING_LENGTH,
-    check_size_limits,
-)
+from channels_rpc.limits import check_size_limits
 from channels_rpc.registry import get_registry
 from channels_rpc.rpc_base import RpcBase, RpcMethodWrapper
 from tests.conftest import MockRpcConsumer
@@ -501,7 +497,8 @@ class TestSizeLimitValidationPerformance:
         excessive overhead, even when approaching limits.
         """
         # Create large payload near string limit (~900KB)
-        large_string = "x" * (MAX_STRING_LENGTH - 1000)
+        config = get_config()
+        large_string = "x" * (config.limits.max_string_length - 1000)
         large_data = {
             "jsonrpc": "2.0",
             "method": "upload_data",
@@ -562,10 +559,11 @@ class TestSizeLimitValidationPerformance:
     def test_array_with_many_items_validation(self):
         """Validate arrays with many items efficiently."""
         # Create array near limit
+        config = get_config()
         array_data = {
             "jsonrpc": "2.0",
             "method": "process_array",
-            "params": {"items": list(range(MAX_ARRAY_LENGTH - 100))},
+            "params": {"items": list(range(config.limits.max_array_length - 100))},
             "id": 1,
         }
 
@@ -719,7 +717,8 @@ class TestLargeResponseChunkingPerformance:
             pass
 
         # Create method with reasonably long name
-        long_method_name = "x" * (MAX_METHOD_NAME_LENGTH - 10)
+        config = get_config()
+        long_method_name = "x" * (config.limits.max_method_name_length - 10)
 
         @TestAsyncConsumer.rpc_method(long_method_name)
         async def very_long_method_name(value: int) -> int:

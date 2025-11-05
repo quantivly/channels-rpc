@@ -32,10 +32,6 @@ Error Codes:
     - JsonRpcErrorCode.PARSE_RESULT_ERROR
     - JsonRpcErrorCode.REQUEST_TOO_LARGE
 
-Size Limits (for custom validation):
-    - MAX_MESSAGE_SIZE, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH
-    - MAX_NESTING_DEPTH, MAX_METHOD_NAME_LENGTH
-
 Configuration:
     Configure limits and behavior via Django settings::
 
@@ -44,6 +40,12 @@ Configuration:
             'MAX_ARRAY_LENGTH': 50000,
             'LOG_RPC_PARAMS': False,
         }
+
+    Or access limits from config programmatically::
+
+        from channels_rpc.config import get_config
+        config = get_config()
+        print(config.limits.max_message_size)
 
 Notes
 -----
@@ -62,22 +64,10 @@ from channels_rpc.exceptions import (
     RequestTooLargeError,
 )
 from channels_rpc.json_rpc_websocket_consumer import JsonRpcWebsocketConsumer
-from channels_rpc.limits import (
-    MAX_ARRAY_LENGTH,
-    MAX_MESSAGE_SIZE,
-    MAX_METHOD_NAME_LENGTH,
-    MAX_NESTING_DEPTH,
-    MAX_STRING_LENGTH,
-    check_size_limits,
-)
+from channels_rpc.limits import check_size_limits
 from channels_rpc.middleware import LoggingMiddleware, RpcMiddleware
 
 __all__ = [
-    "MAX_ARRAY_LENGTH",
-    "MAX_MESSAGE_SIZE",
-    "MAX_METHOD_NAME_LENGTH",
-    "MAX_NESTING_DEPTH",
-    "MAX_STRING_LENGTH",
     "AsyncJsonRpcWebsocketConsumer",
     "JsonRpcError",
     "JsonRpcErrorCode",

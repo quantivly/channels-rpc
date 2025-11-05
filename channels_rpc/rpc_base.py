@@ -861,9 +861,21 @@ class RpcBase:
                 raise
             except Exception as e:
                 # Catch middleware errors and convert to internal error
-                logger.exception(
-                    "Middleware error in process_request: %s", mw.__class__.__name__
-                )
+                from channels_rpc.config import get_config
+
+                config = get_config()
+
+                if config.sanitize_errors:
+                    logger.error(
+                        "Middleware error in process_request: %s - %s: %s",
+                        mw.__class__.__name__,
+                        type(e).__name__,
+                        str(e)[:200],
+                    )
+                else:
+                    logger.exception(
+                        "Middleware error in process_request: %s", mw.__class__.__name__
+                    )
                 duration = time.time() - start_time
                 rpc_method_failed.send(
                     sender=self.__class__,
@@ -903,12 +915,24 @@ class RpcBase:
             for mw in reversed(self.middleware or []):
                 try:
                     result = mw.process_response(result, self)
-                except Exception:
+                except Exception as e:
                     # Log middleware errors but continue with original response
-                    logger.exception(
-                        "Middleware error in process_response: %s",
-                        mw.__class__.__name__,
-                    )
+                    from channels_rpc.config import get_config
+
+                    config = get_config()
+
+                    if config.sanitize_errors:
+                        logger.error(
+                            "Middleware error in process_response: %s - %s: %s",
+                            mw.__class__.__name__,
+                            type(e).__name__,
+                            str(e)[:200],
+                        )
+                    else:
+                        logger.exception(
+                            "Middleware error in process_response: %s",
+                            mw.__class__.__name__,
+                        )
         return result
 
     def _handle_rpc_exception(
@@ -961,7 +985,21 @@ class RpcBase:
             )
         else:
             # Unexpected errors - these indicate bugs
-            logger.exception("Unexpected error processing RPC call")
+            from channels_rpc.config import get_config
+
+            config = get_config()
+
+            if config.sanitize_errors:
+                # Production mode: Log without stack trace
+                logger.error(
+                    "Unexpected error processing RPC call '%s': %s",
+                    method_name,
+                    f"{type(exception).__name__}: {str(exception)[:200]}",
+                )
+            else:
+                # Development mode: Log with full stack trace
+                logger.exception("Unexpected error processing RPC call")
+
             return generate_error_response(
                 rpc_id=rpc_id,
                 code=JsonRpcErrorCode.INTERNAL_ERROR,

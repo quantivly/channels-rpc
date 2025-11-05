@@ -447,6 +447,100 @@ def my_method(value):
     return value * 2
 ```
 
+### Error Code Usage Guide
+
+Choose the appropriate error code to help clients handle errors correctly:
+
+**Client Errors (4xx-style) - Don't retry without changes:**
+
+```python
+from channels_rpc import JsonRpcError, JsonRpcErrorCode, RpcContext
+
+@MyConsumer.rpc_method()
+async def update_user(ctx: RpcContext, user_id: int, email: str):
+    # Input validation failure
+    if not validate_email(email):
+        raise JsonRpcError(
+            ctx.rpc_id,
+            JsonRpcErrorCode.VALIDATION_ERROR,
+            data={"field": "email", "error": "Invalid format"}
+        )
+
+    # Resource not found
+    try:
+        user = await User.objects.aget(id=user_id)
+    except User.DoesNotExist:
+        raise JsonRpcError(
+            ctx.rpc_id,
+            JsonRpcErrorCode.RESOURCE_NOT_FOUND,
+            data={"resource": "user", "id": user_id}
+        )
+
+    # Permission check
+    if not ctx.scope["user"].has_perm("myapp.change_user"):
+        raise JsonRpcError(
+            ctx.rpc_id,
+            JsonRpcErrorCode.PERMISSION_DENIED,
+            data={"permission": "myapp.change_user"}
+        )
+
+    # Business logic conflict
+    if user.is_locked:
+        raise JsonRpcError(
+            ctx.rpc_id,
+            JsonRpcErrorCode.CONFLICT,
+            data={"error": "User account is locked"}
+        )
+
+    user.email = email
+    await user.asave()
+    return {"success": True}
+```
+
+**Server Errors (5xx-style) - Retry may succeed:**
+
+```python
+@MyConsumer.rpc_method()
+async def fetch_external_data(ctx: RpcContext, url: str):
+    # External service failure - transient
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+    except httpx.HTTPError as e:
+        raise JsonRpcError(
+            ctx.rpc_id,
+            JsonRpcErrorCode.EXTERNAL_SERVICE_ERROR,
+            data={"service": "external-api", "error": str(e)}
+        )
+
+    # Database error - may be transient
+    try:
+        await save_to_database(response.json())
+    except DatabaseError as e:
+        raise JsonRpcError(
+            ctx.rpc_id,
+            JsonRpcErrorCode.DATABASE_ERROR,
+            data={"error": "Failed to save data"}
+        )
+
+    return {"data": response.json()}
+```
+
+**Protocol Errors - Automatically generated:**
+
+- `PARSE_ERROR` - Automatically raised by framework for invalid JSON
+- `INVALID_REQUEST` - Automatically raised for malformed JSON-RPC requests
+- `METHOD_NOT_FOUND` - Automatically raised when method doesn't exist
+- `INVALID_PARAMS` - Use for parameter validation failures
+- `REQUEST_TOO_LARGE` - Automatically raised when size limits exceeded
+
+**Best Practices:**
+
+1. **Use specific codes** - Helps clients distinguish retryable vs non-retryable errors
+2. **Include data field** - Provide context about what went wrong
+3. **Don't leak secrets** - Never include passwords, tokens, or internal paths in error data
+4. **Be consistent** - Use the same error codes for similar failures across your API
+
 ## Configuration
 
 Configure channels-rpc via Django settings under the `CHANNELS_RPC` key:
@@ -501,10 +595,12 @@ class MyConsumer(AsyncJsonRpcWebsocketConsumer):
 ```
 
 **Built-in Middleware** (in `channels_rpc.middleware`):
-- `RateLimitMiddleware` - Per-method rate limiting
-- `AuthenticationMiddleware` - Require authentication
-- `LoggingMiddleware` - Log all RPC calls
-- `CachingMiddleware` - Cache method responses
+- `LoggingMiddleware` - Example middleware that logs RPC calls with timing
+
+**Middleware Examples** (see `examples/middleware_usage.py`):
+- Rate limiting pattern
+- Authentication pattern
+- Custom middleware implementation
 - `CompressionMiddleware` - Compress large responses
 - `RequestIDMiddleware` - Track requests with unique IDs
 
@@ -636,9 +732,12 @@ api_doc = MyConsumer.describe_api()
 
 **🔌 Middleware Support**
 - Extensible middleware pipeline for cross-cutting concerns
-- Built-in middleware: Rate limiting, auth, logging, caching, compression, request ID tracking
-- Custom middleware support via `RpcMiddleware` protocol
+- Protocol-based middleware system via `RpcMiddleware` protocol
+- Example middleware: `LoggingMiddleware` for call tracking
+- Middleware examples in `examples/middleware_usage.py` (rate limiting, auth, etc.)
 - See [Middleware](#middleware) section
+
+**Note**: Rate limiting, connection limits, and request tracking are **application-level concerns** in channels-rpc. The library provides the middleware framework and examples, but implementations are application-specific. For production deployments, see QSpace server's implementation as a reference.
 
 **💾 Atomic Transaction Support**
 - `@database_rpc_method(atomic=True)` for automatic transaction management
@@ -810,6 +909,74 @@ The HTTP transport has been removed. This library now focuses exclusively on Web
 
 **Impact:** `RuntimeError` exceptions will now be logged as internal errors instead of application errors.
 **Migration:** If your code intentionally raises `RuntimeError` for application logic, use `ValueError` or `TypeError` instead.
+
+## Production Deployment
+
+### Configuration Checklist
+
+For production deployments, ensure these settings are properly configured:
+
+```python
+# settings.py (PRODUCTION)
+CHANNELS_RPC = {
+    # Size limits - adjust based on your use case
+    'MAX_MESSAGE_SIZE': 10 * 1024 * 1024,  # 10MB default
+
+    # Security - always enabled in production
+    'SANITIZE_ERRORS': True,  # Never leak stack traces
+    'LOG_RPC_PARAMS': False,  # Never log params (may contain PII)
+}
+```
+
+### Failure Modes and Graceful Degradation
+
+**Scenario: Database Unavailable**
+- Methods using `@database_rpc_method()` will fail with `DATABASE_ERROR`
+- Other methods continue working normally
+- **Mitigation**: Implement database connection pooling and read replicas
+
+**Scenario: Redis (Channel Layer) Unavailable**
+- WebSocket connections will fail to establish
+- Existing connections may experience message delivery delays
+- **Mitigation**: Use Redis Sentinel or Cluster for high availability
+
+**Scenario: Middleware Errors**
+- Request middleware errors: Returns `INTERNAL_ERROR`, request rejected
+- Response middleware errors: Original response sent, error logged
+- **Mitigation**: Test middleware thoroughly, handle exceptions internally
+
+**Scenario: Method Execution Timeout**
+- Async methods: Timeout enforced via `@rpc_method(timeout=60)`
+- Sync methods: No timeout enforcement (limitation)
+- **Mitigation**: Use async consumers for timeout guarantees
+
+**Scenario: Message Size Limit Exceeded**
+- Request rejected with `REQUEST_TOO_LARGE` error
+- Connection remains open, client can retry with smaller payload
+- **Mitigation**: Implement chunking/pagination at application level
+
+**Scenario: Rate Limit Exceeded** (Application-Level)
+- Implementation-specific (see QSpace server for reference)
+- Generally: Request rejected with `RATE_LIMIT_EXCEEDED`
+- **Mitigation**: Implement exponential backoff in clients
+
+### Security Best Practices
+
+1. **Always set `SANITIZE_ERRORS: True` in production** - Prevents information disclosure
+2. **Never set `LOG_RPC_PARAMS: True` in production** - May log PII/credentials
+3. **Validate all inputs** - Use `VALIDATION_ERROR` for invalid data
+4. **Implement connection limits** - Prevent resource exhaustion (see QSpace example)
+5. **Use HTTPS/WSS** - Never expose WebSocket endpoints over unencrypted connections
+6. **Implement authentication** - Use middleware or `@permission_required` decorator
+7. **Monitor error rates** - Use signals to track `rpc_method_failed` events
+
+### Performance Recommendations
+
+1. **Use async consumers** - Better concurrency and timeout support
+2. **Cache method introspection** - Already done automatically (31x speedup)
+3. **Implement connection pooling** - Database connections via `database_rpc_method`
+4. **Monitor promise cleanup** - Track periodic cleanup in logs
+5. **Set appropriate size limits** - Balance security vs functionality
 
 ### Why These Changes
 

@@ -124,5 +124,43 @@ class AsyncJsonRpcWebsocketConsumer(AsyncJsonWebsocketConsumer, AsyncRpcBase):
                 minimal = '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}'
                 return minimal
 
+    async def receive(self, text_data=None, bytes_data=None):
+        """Override receive to check message size before JSON parsing.
+
+        This prevents DoS attacks where attackers send large JSON payloads
+        that consume memory during parsing.
+
+        Parameters
+        ----------
+        text_data : str | None
+            Text data from WebSocket frame
+        bytes_data : bytes | None
+            Binary data from WebSocket frame
+        """
+        from channels_rpc.config import get_config
+
+        # Get max message size from config
+        max_size = get_config().limits.max_message_size
+
+        # Check size before parsing to prevent DoS
+        if text_data:
+            size = len(text_data.encode("utf-8"))
+        elif bytes_data:
+            size = len(bytes_data)
+        else:
+            size = 0
+
+        if size > max_size:
+            error = generate_error_response(
+                None,
+                JsonRpcErrorCode.REQUEST_TOO_LARGE,
+                f"Message size {size} exceeds limit of {max_size} bytes",
+            )
+            await self.send_json(error)
+            return
+
+        # Size is OK, continue with normal JSON parsing
+        await super().receive(text_data=text_data, bytes_data=bytes_data)
+
     async def receive_json(self, content):
         await self._base_receive_json(content)

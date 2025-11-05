@@ -9,9 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Server-side request ID collision detection**: Added tracking of recent request IDs with 10-second cooldown period to prevent replay attacks and request ID reuse issues. Uses lazy initialization for compatibility with Django Channels consumer lifecycle.
+- **Per-IP connection rate limiting**: Added sliding window rate limiter to prevent connection flood attacks (10 attempts per 60 seconds per IP address). Configured at class level for consistency across all consumer instances.
+- **Certificate expiry validation**: Added validation of client certificate expiry dates on connection establishment. Rejects expired or not-yet-valid certificates with WebSocket close code 4002.
+- **DoS protection for async consumers**: Added message size validation before JSON parsing in `AsyncJsonRpcWebsocketConsumer.receive()` to prevent memory exhaustion attacks.
+- **Error log sanitization**: Added respect for `SANITIZE_ERRORS` configuration in all error logging paths. Production mode now logs error types without stack traces to prevent information disclosure.
+
+### Changed
+- **Removed mutable module constants**: Refactored `limits.py` to use `get_config().limits` pattern throughout, eliminating the anti-pattern of mutating "constants" at runtime. Constants no longer exported from public API - use config object instead.
+- **Production-safe defaults**: Set `SANITIZE_ERRORS=True` as default to prevent stack trace leakage in production environments.
 
 ### Fixed
 - **Exception handling in RPC processing**: Removed overly broad `Exception` from exception handler in `_intercept_call()`. Now only catches specific application-level exceptions (`JsonRpcError`, `ValueError`, `TypeError`, `KeyError`, `AttributeError`), allowing system exceptions and unexpected errors to propagate correctly for proper debugging and error handling.
+- **Middleware error handling**: Fixed middleware exception handlers to respect `SANITIZE_ERRORS` configuration. Stack traces no longer leaked in production mode for middleware failures.
 
 ## [1.0.0] - 2025-11-04
 
