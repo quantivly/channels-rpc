@@ -1,0 +1,5 @@
+- The remote has been forked from https://github.com/millerf/django-channels2-jsonrpc and completely diverged from it. No upstream relationship is maintained.
+- The only downstream package for channels-rpc is the QSpace server (see ../qspace-server).
+- While the QSpace client (../qspace-client) is deployed locally on this development instance, the QSpace server is deployed remotely, on a dedicated host.
+- The Qspace client uses ../fastapi_websocket_rpc to manage JSON-RPC communications.
+- When making breaking changes, ../qspace-server needs to be updated accordingly.

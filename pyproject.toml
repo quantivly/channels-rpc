@@ -3,20 +3,25 @@ authors = ["Zvi Baratz <zvi.baratz@quantivly.com>"]
 description = "JSON-RPC implementation for Django's channels library."
 name = "channels-rpc"
 readme = "README.md"
-version = "0.3.6"
+version = "1.0.0"
 
 [tool.poetry.dependencies]
-python = ">=3.9"
+python = ">=3.10"
 channels = "^4.0.0"
+django = ">=4.2.6"
 
 [tool.poetry.group.dev.dependencies]
 aiounittest = "^1.4.2"
 black = "^23.10.0"
-django = "^4.2.6"
 ipython = "^8.14.0"
+mypy = "^1.0.0"
 pre-commit = "^3.3.2"
 pytest = "^7.3.1"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.0.0"
 ruff = "^0.1.1"
+daphne = "^4.2.1"
+pytest-mock = "^3.15.1"
 
 [build-system]
 build-backend = "poetry.core.masonry.api"
@@ -25,21 +30,63 @@ requires = ["poetry-core"]
 # ==== pytest ====
 [tool.pytest.ini_options]
 minversion = "6.0"
-python_files = [
-  "tests.py",
-  "test_*.py",
+python_files = ["tests.py", "test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+# Django settings for testing
+DJANGO_SETTINGS_MODULE = "tests.settings"
+
+# Test markers for organization
+markers = [
+    "unit: Unit tests for individual functions/methods",
+    "integration: Integration tests for complete flows",
+    "sync: Tests for synchronous consumers",
+    "async: Tests for asynchronous consumers",
+    "websocket: WebSocket-specific tests",
+    "http: HTTP consumer tests",
+    "slow: Tests that take longer to run",
+    "django: Tests that require Django database access",
+    "performance: Performance and load tests for benchmarking",
+]
+
+# Additional pytest options
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "-ra",
 ]
 
 # ==== Coverage ====
 [tool.coverage.run]
 include = ["channels_rpc/**"]
-omit = ["*/tests/*"]
+omit = ["*/tests/*", "*/migrations/*"]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
 
 [tool.black]
 skip-string-normalization = true
-target-version = ["py39"]
+target-version = ["py310"]
 
 [tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
 ignore = [
   "B027", # Allow boolean positional values in function calls, like `dict.get(... True)`
   "FBT003", # Ignore checks for possible passwords
@@ -52,9 +99,9 @@ ignore = [
   "PLR0912",
   "PLR0913",
   "PLR0915",
+  "PLR2004", # Magic value comparisons (style preference)
   "RUF012",
 ]
-ignore-init-module-imports = true
 select = [
   "A",
   "ARG",
@@ -80,25 +127,24 @@ select = [
   "W",
   "YTT",
 ]
-target-version = "py39"
 unfixable = [
   "F401",
 ]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["channels_rpc"]
 
-[tool.ruff.flake8-tidy-imports]
+[tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["PLR2004", "S101", "TID252"]
 
 # ==== mypy ====
 [tool.mypy]
 check_untyped_defs = true
 ignore_missing_imports = true
-python_version = "3.9"
+python_version = "3.10"
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true

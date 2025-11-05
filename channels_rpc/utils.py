@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 
@@ -24,7 +25,7 @@ def create_json_rpc_request(
     dict[str, Any]
         JSON-RPC 2.0 request message.
     """
-    message = {
+    message: dict[str, Any] = {
         "jsonrpc": "2.0",
         "method": method,
     }
@@ -39,7 +40,7 @@ def create_json_rpc_request(
 
 
 def create_json_rpc_response(
-    rpc_id: str | int | None = None,
+    rpc_id: str | int | float | None = None,
     result: Any = None,
     error: dict[str, Any] | None = None,
     *,
@@ -49,7 +50,7 @@ def create_json_rpc_response(
 
     Parameters
     ----------
-    rpc_id : str | int | None
+    rpc_id : str | int | float | None
         Request identifier that this responds to.
     result : Any
         Successful result data.
@@ -63,7 +64,7 @@ def create_json_rpc_response(
     dict[str, Any]
         JSON-RPC 2.0 response message.
     """
-    message = {
+    message: dict[str, Any] = {
         "jsonrpc": "2.0",
         "id": rpc_id,
     }
@@ -79,7 +80,7 @@ def create_json_rpc_response(
 
 
 def create_json_rpc_error_response(
-    rpc_id: str | int | None = None,
+    rpc_id: str | int | float | None = None,
     code: int = -32603,
     message: str = "Internal error",
     data: Any = None,
@@ -88,7 +89,7 @@ def create_json_rpc_error_response(
 
     Parameters
     ----------
-    rpc_id : str | int | None
+    rpc_id : str | int | float | None
         Request identifier that this responds to.
     code : int
         Error code (see JSON-RPC 2.0 spec).
@@ -124,15 +125,31 @@ def create_json_rpc_frame(
     *,
     compressed: bool = False,
 ) -> dict[str, Any]:
-    """Legacy function for backward compatibility."""
+    """Legacy function for backward compatibility.
+
+    .. deprecated:: 1.0.0
+        Use :func:`create_json_rpc_request`, :func:`create_json_rpc_response`,
+        or :func:`create_json_rpc_error_response` instead.
+    """
+    warnings.warn(
+        "create_json_rpc_frame() is deprecated. Use create_json_rpc_request(), "
+        "create_json_rpc_response(), or create_json_rpc_error_response() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if result is None:
         # Creating a request
         return create_json_rpc_request(rpc_id=rpc_id, method=method, params=params)
     elif error:
+        # Extract error values with proper types
+        error_code = error.get("code", -32603)
+        error_message = error.get("message", "Internal error")
         return create_json_rpc_error_response(
             rpc_id=rpc_id,
-            code=error.get("code", -32603),
-            message=error.get("message", "Internal error"),
+            code=error_code if isinstance(error_code, int) else -32603,
+            message=(
+                error_message if isinstance(error_message, str) else "Internal error"
+            ),
             data=error.get("data"),
         )
     else:
