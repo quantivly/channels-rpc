@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Server-side request ID collision detection**: Added tracking of recent request IDs with 10-second cooldown period to prevent replay attacks and request ID reuse issues. Uses lazy initialization for compatibility with Django Channels consumer lifecycle.
+
 ### Fixed
 - **Exception handling in RPC processing**: Removed overly broad `Exception` from exception handler in `_intercept_call()`. Now only catches specific application-level exceptions (`JsonRpcError`, `ValueError`, `TypeError`, `KeyError`, `AttributeError`), allowing system exceptions and unexpected errors to propagate correctly for proper debugging and error handling.
 
