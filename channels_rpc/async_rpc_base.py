@@ -54,6 +54,15 @@ class AsyncRpcBase(RpcBase):
     AsyncChannelsConsumerProtocol for the expected interface.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the async RPC consumer with request ID collision tracking."""
+        super().__init__(*args, **kwargs)
+
+        # Request ID collision detection
+        # Tracks recent request IDs with timestamps to prevent replay attacks
+        self._recent_request_ids: dict[str | int, float] = {}
+        self._request_id_cooldown = 10.0  # seconds
+
     @classmethod
     def database_rpc_method(
         cls,
@@ -315,6 +324,63 @@ class AsyncRpcBase(RpcBase):
             result = None
         return result
 
+    def _check_request_id_collision(self, rpc_id: str | int | None) -> None:
+        """Check for request ID collisions and enforce cooldown period.
+
+        Tracks request IDs with timestamps to detect reuse within cooldown period.
+        This prevents clients from reusing IDs too quickly, which could cause
+        issues with request tracking and response routing.
+
+        Parameters
+        ----------
+        rpc_id : str | int | None
+            Request ID to check for collisions. None is allowed (notifications).
+
+        Raises
+        ------
+        JsonRpcError
+            If the request ID was used within the cooldown period.
+
+        Notes
+        -----
+        The tracking dictionary is automatically pruned when it exceeds 10,000 entries
+        to prevent unbounded memory growth.
+        """
+        if rpc_id is None:
+            return  # Notifications don't have IDs, no collision possible
+
+        # Lazy initialization for Django Channels consumers that don't call __init__
+        if not hasattr(self, "_recent_request_ids"):
+            self._recent_request_ids: dict[str | int, float] = {}
+            self._request_id_cooldown = 10.0
+
+        current_time = time.time()
+
+        # Clean old IDs periodically to keep dict bounded
+        if len(self._recent_request_ids) > 10000:
+            cutoff = current_time - self._request_id_cooldown
+            self._recent_request_ids = {
+                k: v
+                for k, v in self._recent_request_ids.items()
+                if v >= cutoff
+            }
+
+        # Check for collision
+        if rpc_id in self._recent_request_ids:
+            last_used = self._recent_request_ids[rpc_id]
+            if current_time - last_used < self._request_id_cooldown:
+                raise JsonRpcError(
+                    rpc_id,
+                    JsonRpcErrorCode.INVALID_REQUEST,
+                    data={
+                        "error": f"Request ID '{rpc_id}' reused within cooldown period",
+                        "cooldown_seconds": self._request_id_cooldown,
+                    },
+                )
+
+        # Record this ID
+        self._recent_request_ids[rpc_id] = current_time
+
     def _validate_request_id(
         self, rpc_id: str | int | float | None
     ) -> tuple[dict[str, Any] | None, bool]:
@@ -562,6 +628,15 @@ class AsyncRpcBase(RpcBase):
         error_response, should_return = self._validate_request_id(rpc_id)
         if error_response is not None:
             return error_response, should_return
+
+        # Check for request ID collisions (prevents replay attacks)
+        try:
+            self._check_request_id_collision(rpc_id)
+        except JsonRpcError as e:
+            logger.warning(
+                "Request ID collision detected: %s", e.data.get("error") if e.data else "unknown"
+            )
+            return e.as_dict(), False
 
         logger.debug(logs.CALL_INTERCEPTED, data)
 
