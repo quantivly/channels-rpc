@@ -4,22 +4,16 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
-
-from channels.db import database_sync_to_async
-from django.db import transaction
 
 from channels_rpc import logs
 from channels_rpc.context import RpcContext
-from channels_rpc.decorators import inspect_accepts_context
 from channels_rpc.exceptions import (
     JsonRpcError,
     JsonRpcErrorCode,
     generate_error_response,
 )
 from channels_rpc.protocols import RpcMethodWrapper
-from channels_rpc.registry import get_registry
 from channels_rpc.rpc_base import RpcBase
 from channels_rpc.signals import (
     rpc_method_completed,
@@ -62,117 +56,6 @@ class AsyncRpcBase(RpcBase):
         # Tracks recent request IDs with timestamps to prevent replay attacks
         self._recent_request_ids: dict[str | int, float] = {}
         self._request_id_cooldown = 10.0  # seconds
-
-    @classmethod
-    def database_rpc_method(
-        cls,
-        method_name: str | None = None,
-        *,
-        websocket: bool = True,
-        atomic: bool = True,
-        using: str | None = None,
-        timeout: float | None = None,
-    ) -> Callable:
-        """Register an async RPC method that needs database access.
-
-        This decorator combines rpc_method() with database_sync_to_async(),
-        allowing the method to safely access Django ORM from async context.
-        Optionally wraps the method in an atomic transaction.
-
-        .. versionadded:: 1.0.0
-
-        Parameters
-        ----------
-        method_name : str | None, optional
-            Custom name for the method. If None, uses function __name__.
-        websocket : bool, optional
-            Enable for WebSocket transport, by default True.
-        atomic : bool, optional
-            Wrap method in atomic transaction, by default True.
-        using : str | None, optional
-            Database alias to use, by default None (uses default database).
-        timeout : float | None, optional
-            Maximum execution time in seconds. If None, uses default timeout
-            (300 seconds). Set to 0 or negative to disable timeout.
-            By default None.
-
-        Returns
-        -------
-        Callable
-            The decorated method.
-
-        Examples
-        --------
-        With automatic transaction management::
-
-            @MyConsumer.database_rpc_method()
-            def create_user(username: str):
-                user = User.objects.create(username=username)
-                Profile.objects.create(user=user)  # Atomic with user creation
-                return user.id
-
-        Without transaction (read-only)::
-
-            @MyConsumer.database_rpc_method(atomic=False)
-            def get_stats():
-                return User.objects.count()
-
-        Using specific database::
-
-            @MyConsumer.database_rpc_method(using='analytics')
-            def log_event(event_data: dict):
-                Event.objects.using('analytics').create(**event_data)
-
-        With consumer context and custom timeout::
-
-            @MyConsumer.database_rpc_method(timeout=60)
-            def get_user(ctx: RpcContext, user_id: int) -> dict:
-                # This can safely use Django ORM
-                # Will timeout after 60 seconds
-                user = User.objects.get(id=user_id)
-                return {"name": user.username, "email": user.email}
-
-        Notes
-        -----
-        The decorated function should be synchronous (not async), as it will
-        be automatically wrapped with database_sync_to_async. When atomic=True,
-        the function is wrapped with transaction.atomic() before being converted
-        to async, ensuring proper transaction management.
-        """
-
-        def decorator(func: Callable) -> Callable:
-            # Inspect original sync function BEFORE wrapping
-            name = method_name or func.__name__
-            accepts_context = inspect_accepts_context(func)
-
-            # Wrap with transaction if requested (BEFORE database_sync_to_async)
-            wrapped_func = func
-            if atomic:
-                wrapped_func = transaction.atomic(using=using)(func)
-
-            # Then wrap with database_sync_to_async for Django ORM access
-            async_func = database_sync_to_async(wrapped_func)
-
-            # Copy over function metadata
-            async_func.__name__ = func.__name__
-            async_func.__qualname__ = func.__qualname__
-            if func.__doc__:
-                async_func.__doc__ = func.__doc__
-
-            # Create RpcMethodWrapper directly without re-inspection
-            # (context inspection already done on sync function)
-            wrapper = RpcMethodWrapper(
-                func=async_func,
-                options={"websocket": websocket},
-                name=name,
-                accepts_context=accepts_context,
-                timeout=timeout,
-            )
-            registry = get_registry()
-            registry.register_method(cls, name, wrapper)
-            return wrapper
-
-        return decorator
 
     if TYPE_CHECKING:
         # Async type hints for methods provided by Channels consumer mixin

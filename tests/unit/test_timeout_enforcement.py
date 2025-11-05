@@ -69,22 +69,6 @@ def async_consumer_with_timeout_methods(mock_websocket_scope):
         await asyncio.sleep(0.2)
         return "success"
 
-    @TestConsumer.database_rpc_method(timeout=0.5)
-    def database_method_with_timeout(value: int) -> int:
-        """Database method with custom timeout."""
-        import time
-
-        time.sleep(0.1)  # Fast completion
-        return value * 2
-
-    @TestConsumer.database_rpc_method(timeout=0.1)
-    def database_method_exceeds_timeout(value: int) -> int:
-        """Database method that exceeds timeout."""
-        import time
-
-        time.sleep(0.5)  # Too slow
-        return value * 2
-
     return TestConsumer(mock_websocket_scope)
 
 
@@ -229,59 +213,6 @@ class TestTimeoutEnforcement:
         assert response is not None
         assert response["result"] == "success"
         assert response["id"] == 5
-
-    @pytest.mark.asyncio
-    async def test_database_method_timeout(self, async_consumer_with_timeout_methods):
-        """Should enforce timeout on database_rpc_method decorated methods."""
-        registry = get_registry()
-        method = registry.get_method(
-            async_consumer_with_timeout_methods.__class__,
-            "database_method_with_timeout",
-        )
-        assert method is not None
-
-        # Verify wrapper has custom timeout
-        assert method.timeout == 0.5
-
-        # Execute method successfully (completes in 0.1s, under 0.5s)
-        request = {
-            "jsonrpc": "2.0",
-            "method": "database_method_with_timeout",
-            "params": {"value": 5},
-            "id": 6,
-        }
-
-        response = await async_consumer_with_timeout_methods._process_call(request)
-
-        assert response is not None
-        assert response["result"] == 10
-        assert response["id"] == 6
-
-    @pytest.mark.asyncio
-    async def test_database_method_timeout_exceeded(
-        self, async_consumer_with_timeout_methods
-    ):
-        """Should timeout database methods that exceed limit."""
-        request = {
-            "jsonrpc": "2.0",
-            "method": "database_method_exceeds_timeout",
-            "params": {"value": 5},
-            "id": 7,
-        }
-
-        # Method sleeps for 0.5s but timeout is 0.1s
-        from channels_rpc.exceptions import JsonRpcError
-
-        with pytest.raises(JsonRpcError) as exc_info:
-            await async_consumer_with_timeout_methods._process_call(request)
-
-        error = exc_info.value
-        assert error.code == JsonRpcErrorCode.INTERNAL_ERROR
-        assert error.data is not None
-        assert "timeout" in error.data
-
-        error_dict = error.as_dict()
-        assert "timed out" in error_dict["error"]["message"].lower()
 
     @pytest.mark.asyncio
     async def test_timeout_error_includes_rpc_id(

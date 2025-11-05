@@ -14,7 +14,6 @@
 - ✅ **Django settings** - Runtime configuration via Django settings (new in 1.0.0)
 - ✅ **Lifecycle signals** - Monitor RPC calls with Django signals (new in 1.0.0)
 - ✅ **Middleware support** - Extensible middleware pipeline for cross-cutting concerns (new in 1.0.0)
-- ✅ **Atomic transactions** - Built-in transaction support for database methods (new in 1.0.0)
 - ✅ **Custom serialization** - Support for custom JSON encoders (new in 1.0.0)
 - ✅ **Permission control** - Decorator-based authorization with Django permissions (new in 1.0.0)
 - ✅ **API introspection** - Discover methods, signatures, and documentation at runtime (new in 1.0.0)
@@ -92,25 +91,6 @@ Standard JSON-RPC 2.0 error codes (defined in `channels_rpc/exceptions.py`):
 | -32603 | `INTERNAL_ERROR` | Internal JSON-RPC error |
 
 Server-defined error codes (-32099 to -32000):
-
-**Client Errors (4xx-style) - Request should be fixed:**
-
-| Code | Constant | Meaning |
-|------|----------|---------|
-| -32002 | `VALIDATION_ERROR` | Invalid input data (new in 1.0.0) |
-| -32003 | `RESOURCE_NOT_FOUND` | Requested resource doesn't exist (new in 1.0.0) |
-| -32004 | `PERMISSION_DENIED` | Authorization failure (new in 1.0.0) |
-| -32005 | `CONFLICT` | State conflict (new in 1.0.0) |
-| -32006 | `RATE_LIMIT_EXCEEDED` | Too many requests (new in 1.0.0) |
-
-**Server Errors (5xx-style) - Retryable:**
-
-| Code | Constant | Meaning |
-|------|----------|---------|
-| -32010 | `DATABASE_ERROR` | Transient database failure (new in 1.0.0) |
-| -32011 | `EXTERNAL_SERVICE_ERROR` | External dependency failed (new in 1.0.0) |
-
-**Legacy/Generic:**
 
 | Code | Constant | Meaning |
 |------|----------|---------|
@@ -216,40 +196,6 @@ async def ping(fake_an_error):
         # Will return a result to the client
         #  --> {"id":1, "jsonrpc":"2.0","method":"mymodule.rpc.ping","params":{}} #  <-- {"id": 1, "jsonrpc": "2.0", "result": "pong"}  return "pong"
 ```
-
-## Database Access in Async Methods
-
-For async RPC methods that need to access Django ORM, use the `@database_rpc_method()` decorator:
-
-```python
-from channels_rpc import AsyncJsonRpcWebsocketConsumer
-from myapp.models import User
-
-class MyConsumer(AsyncJsonRpcWebsocketConsumer):
-    pass
-
-@MyConsumer.database_rpc_method()
-def get_user(user_id: int):
-    """Get user information.
-
-    Note: This is a SYNC function that will be automatically
-    wrapped with database_sync_to_async.
-    """
-    user = User.objects.get(id=user_id)
-    return {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-    }
-
-@MyConsumer.database_rpc_method("users.list")
-def list_users(limit: int = 10):
-    """List users."""
-    users = User.objects.all()[:limit]
-    return [{"id": u.id, "username": u.username} for u in users]
-```
-
-**Important**: The decorated function should be synchronous (not async), as it will be automatically wrapped with `database_sync_to_async`.
 
 ## [Accessing Consumer and Request Context](#consumer)
 
@@ -434,7 +380,28 @@ def my_method(value):
 
 Choose the appropriate error code to help clients handle errors correctly:
 
-**Client Errors (4xx-style) - Don't retry without changes:**
+**Standard Protocol Errors - Automatically generated:**
+
+- `PARSE_ERROR` - Automatically raised by framework for invalid JSON
+- `INVALID_REQUEST` - Automatically raised for malformed JSON-RPC requests
+- `METHOD_NOT_FOUND` - Automatically raised when method doesn't exist
+- `INVALID_PARAMS` - Use for parameter validation failures
+- `INTERNAL_ERROR` - Internal server errors
+
+**Application Errors:**
+
+- `GENERIC_APPLICATION_ERROR` - Generic application-level errors (deprecated, prefer specific custom codes)
+- `REQUEST_TOO_LARGE` - Automatically raised when size limits exceeded
+- `PARSE_RESULT_ERROR` - Result serialization failures
+
+**Best Practices:**
+
+1. **Use standard codes when appropriate** - The JSON-RPC 2.0 spec codes cover most common scenarios
+2. **Include data field** - Provide context about what went wrong
+3. **Don't leak secrets** - Never include passwords, tokens, or internal paths in error data
+4. **Be consistent** - Use the same error codes for similar failures across your API
+
+**Example:**
 
 ```python
 from channels_rpc import JsonRpcError, JsonRpcErrorCode, RpcContext
@@ -445,84 +412,24 @@ async def update_user(ctx: RpcContext, user_id: int, email: str):
     if not validate_email(email):
         raise JsonRpcError(
             ctx.rpc_id,
-            JsonRpcErrorCode.VALIDATION_ERROR,
+            JsonRpcErrorCode.INVALID_PARAMS,
             data={"field": "email", "error": "Invalid format"}
         )
 
-    # Resource not found
+    # Application-level error
     try:
         user = await User.objects.aget(id=user_id)
     except User.DoesNotExist:
         raise JsonRpcError(
             ctx.rpc_id,
-            JsonRpcErrorCode.RESOURCE_NOT_FOUND,
+            JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
             data={"resource": "user", "id": user_id}
-        )
-
-    # Permission check
-    if not ctx.scope["user"].has_perm("myapp.change_user"):
-        raise JsonRpcError(
-            ctx.rpc_id,
-            JsonRpcErrorCode.PERMISSION_DENIED,
-            data={"permission": "myapp.change_user"}
-        )
-
-    # Business logic conflict
-    if user.is_locked:
-        raise JsonRpcError(
-            ctx.rpc_id,
-            JsonRpcErrorCode.CONFLICT,
-            data={"error": "User account is locked"}
         )
 
     user.email = email
     await user.asave()
     return {"success": True}
 ```
-
-**Server Errors (5xx-style) - Retry may succeed:**
-
-```python
-@MyConsumer.rpc_method()
-async def fetch_external_data(ctx: RpcContext, url: str):
-    # External service failure - transient
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-    except httpx.HTTPError as e:
-        raise JsonRpcError(
-            ctx.rpc_id,
-            JsonRpcErrorCode.EXTERNAL_SERVICE_ERROR,
-            data={"service": "external-api", "error": str(e)}
-        )
-
-    # Database error - may be transient
-    try:
-        await save_to_database(response.json())
-    except DatabaseError as e:
-        raise JsonRpcError(
-            ctx.rpc_id,
-            JsonRpcErrorCode.DATABASE_ERROR,
-            data={"error": "Failed to save data"}
-        )
-
-    return {"data": response.json()}
-```
-
-**Protocol Errors - Automatically generated:**
-
-- `PARSE_ERROR` - Automatically raised by framework for invalid JSON
-- `INVALID_REQUEST` - Automatically raised for malformed JSON-RPC requests
-- `METHOD_NOT_FOUND` - Automatically raised when method doesn't exist
-- `INVALID_PARAMS` - Use for parameter validation failures
-- `REQUEST_TOO_LARGE` - Automatically raised when size limits exceeded
-
-**Best Practices:**
-
-1. **Use specific codes** - Helps clients distinguish retryable vs non-retryable errors
-2. **Include data field** - Provide context about what went wrong
-3. **Don't leak secrets** - Never include passwords, tokens, or internal paths in error data
-4. **Be consistent** - Use the same error codes for similar failures across your API
 
 ## Configuration
 
@@ -580,12 +487,10 @@ class MyConsumer(AsyncJsonRpcWebsocketConsumer):
 **Built-in Middleware** (in `channels_rpc.middleware`):
 - `LoggingMiddleware` - Example middleware that logs RPC calls with timing
 
-**Middleware Examples** (see `examples/middleware_usage.py`):
-- Rate limiting pattern
-- Authentication pattern
+**Middleware Patterns** (see `examples/comprehensive_example.py`):
 - Custom middleware implementation
-- `CompressionMiddleware` - Compress large responses
-- `RequestIDMiddleware` - Track requests with unique IDs
+- Request/response processing
+- Authentication and logging patterns
 
 ## Signals
 
@@ -717,16 +622,10 @@ api_doc = MyConsumer.describe_api()
 - Extensible middleware pipeline for cross-cutting concerns
 - Protocol-based middleware system via `RpcMiddleware` protocol
 - Example middleware: `LoggingMiddleware` for call tracking
-- Middleware examples in `examples/middleware_usage.py` (rate limiting, auth, etc.)
+- Middleware patterns in `examples/comprehensive_example.py`
 - See [Middleware](#middleware) section
 
 **Note**: Rate limiting, connection limits, and request tracking are **application-level concerns** in channels-rpc. The library provides the middleware framework and examples, but implementations are application-specific. For production deployments, see QSpace server's implementation as a reference.
-
-**💾 Atomic Transaction Support**
-- `@database_rpc_method(atomic=True)` for automatic transaction management
-- Specify database with `using` parameter for multi-database setups
-- Ensures data integrity for multi-step database operations
-- See [Database Access](#database-access) section
 
 **🔧 Custom JSON Encoder**
 - Support for custom JSON encoders (datetime, Decimal, dataclasses, etc.)
@@ -743,11 +642,10 @@ api_doc = MyConsumer.describe_api()
 - `describe_api()` - Generate OpenRPC-compatible API descriptions
 - Runtime method discovery for documentation generation
 
-**📊 Enhanced Error Codes**
-- 7 new error codes for better client/server error distinction
-- Client errors (-32002 to -32006): VALIDATION_ERROR, RESOURCE_NOT_FOUND, PERMISSION_DENIED, CONFLICT, RATE_LIMIT_EXCEEDED
-- Server errors (-32010 to -32011): DATABASE_ERROR, EXTERNAL_SERVICE_ERROR
-- Error categorization utilities: `is_client_error()`, `is_server_error()`
+**📊 Comprehensive Error Handling**
+- Standard JSON-RPC 2.0 error codes (PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR)
+- Server-defined error codes (GENERIC_APPLICATION_ERROR, REQUEST_TOO_LARGE, PARSE_RESULT_ERROR)
+- Type-safe `JsonRpcErrorCode` IntEnum
 
 ### Performance Improvements
 
@@ -857,8 +755,8 @@ While `**kwargs` still works, the recommended approach is using `RpcContext`:
 
 **Old (still works but deprecated):**
 ```python
-@MyConsumer.database_rpc_method()
-def get_user(**kwargs):
+@MyConsumer.rpc_method()
+async def get_user(**kwargs):
     consumer = kwargs.get('consumer')
     user = consumer.scope.get('user')
 ```
@@ -867,8 +765,8 @@ def get_user(**kwargs):
 ```python
 from channels_rpc import RpcContext
 
-@MyConsumer.database_rpc_method()
-def get_user(ctx: RpcContext):
+@MyConsumer.rpc_method()
+async def get_user(ctx: RpcContext):
     user = ctx.scope.get('user')
 ```
 
@@ -914,8 +812,8 @@ CHANNELS_RPC = {
 ### Failure Modes and Graceful Degradation
 
 **Scenario: Database Unavailable**
-- Methods using `@database_rpc_method()` will fail with `DATABASE_ERROR`
-- Other methods continue working normally
+- Methods accessing Django ORM will fail
+- Use `database_sync_to_async` from `channels.db` for safe database access in async methods
 - **Mitigation**: Implement database connection pooling and read replicas
 
 **Scenario: Redis (Channel Layer) Unavailable**
@@ -940,14 +838,14 @@ CHANNELS_RPC = {
 
 **Scenario: Rate Limit Exceeded** (Application-Level)
 - Implementation-specific (see QSpace server for reference)
-- Generally: Request rejected with `RATE_LIMIT_EXCEEDED`
+- Generally: Request rejected with custom application error
 - **Mitigation**: Implement exponential backoff in clients
 
 ### Security Best Practices
 
 1. **Always set `SANITIZE_ERRORS: True` in production** - Prevents information disclosure
 2. **Never set `LOG_RPC_PARAMS: True` in production** - May log PII/credentials
-3. **Validate all inputs** - Use `VALIDATION_ERROR` for invalid data
+3. **Validate all inputs** - Use `INVALID_PARAMS` for invalid data
 4. **Implement connection limits** - Prevent resource exhaustion (see QSpace example)
 5. **Use HTTPS/WSS** - Never expose WebSocket endpoints over unencrypted connections
 6. **Implement authentication** - Use middleware or `@permission_required` decorator
@@ -957,7 +855,7 @@ CHANNELS_RPC = {
 
 1. **Use async consumers** - Better concurrency and timeout support
 2. **Cache method introspection** - Already done automatically (31x speedup)
-3. **Implement connection pooling** - Database connections via `database_rpc_method`
+3. **Implement connection pooling** - For database connections in async methods
 4. **Monitor promise cleanup** - Track periodic cleanup in logs
 5. **Set appropriate size limits** - Balance security vs functionality
 

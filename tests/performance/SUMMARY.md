@@ -160,7 +160,7 @@ Potential additions:
 2. Connection scaling tests (100+ concurrent connections)
 3. Sustained load tests (long-running benchmarks)
 4. Compression performance tests (zstandard overhead)
-5. Database query performance (for `database_rpc_method`)
+5. Database query performance with `database_sync_to_async`
 
 ## Conclusion
 

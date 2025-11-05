@@ -327,7 +327,7 @@ class TestPermissionRequired:
         assert result == {"key1": "value1", "key2": "value2"}
 
     def test_error_code_is_method_not_found(self):
-        """Should use METHOD_NOT_FOUND error code (not PERMISSION_DENIED).
+        """Should use METHOD_NOT_FOUND error code for permission failures.
 
         This is intentional to avoid information disclosure about method existence.
         """
@@ -344,7 +344,6 @@ class TestPermissionRequired:
 
         # Intentionally uses METHOD_NOT_FOUND to avoid leaking info
         assert exc_info.value.code == JsonRpcErrorCode.METHOD_NOT_FOUND
-        assert exc_info.value.code != JsonRpcErrorCode.PERMISSION_DENIED
 
 
 @pytest.mark.unit

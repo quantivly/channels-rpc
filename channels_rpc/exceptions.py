@@ -13,16 +13,6 @@ class JsonRpcErrorCode(IntEnum):
     Standard error codes are defined by the JSON-RPC 2.0 specification.
     Server-defined error codes are in the range -32099 to -32000.
 
-    Error Code Categories
-    ---------------------
-    Client Errors (-32006 to -32002):
-        These indicate problems with the request that the client should fix.
-        Similar to HTTP 4xx errors. Retrying without changes will likely fail.
-
-    Server Errors (-32099 to -32010):
-        These indicate server-side issues that may be transient.
-        Similar to HTTP 5xx errors. Retrying may succeed.
-
     Standard Attributes
     -------------------
     PARSE_ERROR : int
@@ -43,27 +33,6 @@ class JsonRpcErrorCode(IntEnum):
         **Deprecated**: Use more specific error codes instead.
     REQUEST_TOO_LARGE : int
         Server-defined error for oversized requests (-32001).
-    VALIDATION_ERROR : int
-        Client error: Invalid input data (-32002).
-        Use when request data fails validation rules.
-    RESOURCE_NOT_FOUND : int
-        Client error: Requested resource doesn't exist (-32003).
-        Use when a referenced entity cannot be found.
-    PERMISSION_DENIED : int
-        Client error: Authorization failure (-32004).
-        Use when the client lacks required permissions.
-    CONFLICT : int
-        Client error: State conflict (-32005).
-        Use when the operation conflicts with current state.
-    RATE_LIMIT_EXCEEDED : int
-        Client error: Too many requests (-32006).
-        Use when rate limiting is applied.
-    DATABASE_ERROR : int
-        Server error: Transient database failure (-32010).
-        Use for temporary database connection or query issues.
-    EXTERNAL_SERVICE_ERROR : int
-        Server error: External dependency failed (-32011).
-        Use when external API or service calls fail.
     PARSE_RESULT_ERROR : int
         Server-defined error for result parsing (-32701).
     """
@@ -79,56 +48,7 @@ class JsonRpcErrorCode(IntEnum):
     GENERIC_APPLICATION_ERROR = -32000  # Deprecated - use specific codes
     REQUEST_TOO_LARGE = -32001
 
-    # Client errors (-32006 to -32002): Problems with the request
-    VALIDATION_ERROR = -32002
-    RESOURCE_NOT_FOUND = -32003
-    PERMISSION_DENIED = -32004
-    CONFLICT = -32005
-    RATE_LIMIT_EXCEEDED = -32006
-
-    # Server errors (-32099 to -32010): Server-side issues
-    DATABASE_ERROR = -32010
-    EXTERNAL_SERVICE_ERROR = -32011
-
     PARSE_RESULT_ERROR = -32701  # Extension
-
-    @classmethod
-    def is_client_error(cls, code: int) -> bool:
-        """Check if error code indicates a client error.
-
-        Client errors indicate problems with the request that the client
-        should fix. Retrying without changes will likely fail.
-
-        Parameters
-        ----------
-        code : int
-            Error code to check.
-
-        Returns
-        -------
-        bool
-            True if the code represents a client error.
-        """
-        return -32006 <= code <= -32002
-
-    @classmethod
-    def is_server_error(cls, code: int) -> bool:
-        """Check if error code indicates a server error.
-
-        Server errors indicate server-side issues that may be transient.
-        Retrying may succeed after a delay.
-
-        Parameters
-        ----------
-        code : int
-            Error code to check.
-
-        Returns
-        -------
-        bool
-            True if the code represents a server error.
-        """
-        return (-32099 <= code <= -32010) or code == -32603
 
 
 RPC_ERRORS: dict[int, str] = {
@@ -141,15 +61,6 @@ RPC_ERRORS: dict[int, str] = {
     # Server-defined errors
     JsonRpcErrorCode.GENERIC_APPLICATION_ERROR: "Application Error",
     JsonRpcErrorCode.REQUEST_TOO_LARGE: "Request Too Large",
-    # Client errors
-    JsonRpcErrorCode.VALIDATION_ERROR: "Validation Error",
-    JsonRpcErrorCode.RESOURCE_NOT_FOUND: "Resource Not Found",
-    JsonRpcErrorCode.PERMISSION_DENIED: "Permission Denied",
-    JsonRpcErrorCode.CONFLICT: "Conflict",
-    JsonRpcErrorCode.RATE_LIMIT_EXCEEDED: "Rate Limit Exceeded",
-    # Server errors
-    JsonRpcErrorCode.DATABASE_ERROR: "Database Error",
-    JsonRpcErrorCode.EXTERNAL_SERVICE_ERROR: "External Service Error",
     # Extensions
     JsonRpcErrorCode.PARSE_RESULT_ERROR: "Error while parsing result",
 }

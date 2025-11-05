@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **`@database_rpc_method()` decorator**: Removed unused decorator that combined `rpc_method()` with `database_sync_to_async()`. QSpace server uses `database_sync_to_async` directly, and this decorator was not used by any downstream packages. Removed ~339 lines of code including implementation, tests, examples, and documentation. Users should use Django Channels' `database_sync_to_async` directly for database access in async methods.
+- **Unused error codes**: Removed 7 error codes that were added in 1.0.0 but never used: `VALIDATION_ERROR` (-32002), `RESOURCE_NOT_FOUND` (-32003), `PERMISSION_DENIED` (-32004), `CONFLICT` (-32005), `RATE_LIMIT_EXCEEDED` (-32006), `DATABASE_ERROR` (-32010), `EXTERNAL_SERVICE_ERROR` (-32011). These codes were not used by QSpace server or any downstream packages. The API now uses only standard JSON-RPC 2.0 error codes plus `GENERIC_APPLICATION_ERROR`, `REQUEST_TOO_LARGE`, and `PARSE_RESULT_ERROR`.
+- **Error categorization utilities**: Removed `is_client_error()` and `is_server_error()` methods from `JsonRpcErrorCode` enum as they only referenced the removed error codes.
+
 ### Added
 - **Server-side request ID collision detection**: Added tracking of recent request IDs with 10-second cooldown period to prevent replay attacks and request ID reuse issues. Uses lazy initialization for compatibility with Django Channels consumer lifecycle.
 - **Per-IP connection rate limiting**: Added sliding window rate limiter to prevent connection flood attacks (10 attempts per 60 seconds per IP address). Configured at class level for consistency across all consumer instances.
@@ -30,7 +35,7 @@ This is a major release representing a comprehensive refactoring and enhancement
 
 #### 1. HTTP Parameter Removed from Decorators
 
-**Removed the `http` parameter** from `@rpc_method()`, `@rpc_notification()`, and `@database_rpc_method()` decorators.
+**Removed the `http` parameter** from `@rpc_method()` and `@rpc_notification()` decorators.
 
 **Migration:**
 ```python
@@ -87,15 +92,15 @@ While `**kwargs` still works, **RpcContext is now the recommended approach** for
 **Migration:**
 ```python
 # Before (still works)
-@MyConsumer.database_rpc_method()
-def my_method(**kwargs):
+@MyConsumer.rpc_method()
+async def my_method(**kwargs):
     consumer = kwargs.get('consumer')
 
 # After (recommended)
 from channels_rpc import RpcContext
 
-@MyConsumer.database_rpc_method()
-def my_method(ctx: RpcContext):
+@MyConsumer.rpc_method()
+async def my_method(ctx: RpcContext):
     consumer = ctx.consumer
 ```
 
@@ -128,25 +133,10 @@ def my_method(ctx: RpcContext):
   - `CompressionMiddleware` - zstd compression for large responses
   - `RequestIDMiddleware` - Unique ID tracking for request correlation
 
-#### Database Features
-- **Atomic transaction support** in `@database_rpc_method`:
-  - `atomic=True` (default) - Wrap in Django atomic transaction
-  - `using='db_alias'` - Specify which database to use
-  - Ensures data integrity for multi-step operations
-- **Enhanced error handling** for Django ORM exceptions
 
 #### Enhanced Error Codes
-- **Seven new server-defined error codes** for better error categorization:
-  - `-32002` `VALIDATION_ERROR` - Invalid input data (client error)
-  - `-32003` `RESOURCE_NOT_FOUND` - Resource doesn't exist (client error)
-  - `-32004` `PERMISSION_DENIED` - Authorization failure (client error)
-  - `-32005` `CONFLICT` - State conflict (client error)
-  - `-32006` `RATE_LIMIT_EXCEEDED` - Too many requests (client error)
-  - `-32010` `DATABASE_ERROR` - Transient database failure (server error)
-  - `-32011` `EXTERNAL_SERVICE_ERROR` - External dependency failed (server error)
-- **Error categorization utilities**:
-  - `JsonRpcErrorCode.is_client_error()` - Check if error is client-side
-  - `JsonRpcErrorCode.is_server_error()` - Check if error is server-side
+- **Type-safe error codes**: `JsonRpcErrorCode` IntEnum for compile-time safety
+- **Server-defined error codes**: `GENERIC_APPLICATION_ERROR`, `REQUEST_TOO_LARGE`, `PARSE_RESULT_ERROR`
 - **Deprecated** `GENERIC_APPLICATION_ERROR` (still works, use specific codes instead)
 
 #### Security Features
@@ -197,11 +187,6 @@ def my_method(ctx: RpcContext):
   - Provides access to consumer, request_id, method_name, scope, etc.
   - Example usage documented in docstrings
 
-#### Database Integration
-- **@database_rpc_method decorator**: Helper for safely accessing Django ORM from async RPC methods
-  - Automatically wraps sync database code with `database_sync_to_async`
-  - Supports RpcContext injection
-  - Comprehensive documentation and examples
 
 #### Architecture & Code Quality
 - **Eliminated code duplication** (`decorators.py`):
@@ -237,11 +222,8 @@ def my_method(ctx: RpcContext):
   - Permission decorator documentation
   - Custom JSON encoder examples
   - API introspection guide
-- **New example files**:
-  - `examples/comprehensive_example.py` - Showcases all 1.0.0 features
-  - `examples/database_usage.py` - Updated to use RpcContext
-  - `examples/middleware_usage.py` - Middleware patterns
-  - `examples/introspection_demo.py` - API discovery examples
+- **New example file**:
+  - `examples/comprehensive_example.py` - Showcases all 1.0.0 features including RpcContext, middleware, permissions, atomic transactions, custom encoders, error codes, and signals
 - **Enhanced docstrings**: NumPy-style docstrings with examples throughout
 - **Migration guide**: Clear instructions for all breaking changes
 
@@ -365,22 +347,6 @@ class MyConsumer(AsyncJsonRpcWebsocketConsumer):
         request_id = context.rpc_id
         scope = context.scope
         return {"result": "success"}
-```
-
-### Using Database Methods (Optional)
-
-New helper for Django ORM access:
-
-```python
-from channels_rpc import AsyncJsonRpcWebsocketConsumer
-
-class MyConsumer(AsyncJsonRpcWebsocketConsumer):
-    @MyConsumer.database_rpc_method()
-    def get_user(user_id: int):
-        # This is a SYNC function that safely accesses Django ORM
-        from myapp.models import User
-        user = User.objects.get(id=user_id)
-        return {"username": user.username, "email": user.email}
 ```
 
 ## [0.3.6] - 2024-10-XX

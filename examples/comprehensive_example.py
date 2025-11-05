@@ -7,7 +7,6 @@ This example demonstrates all major features added or improved in version 1.0.0:
 - Middleware for cross-cutting concerns
 - Django signals for monitoring
 - Permission-based access control
-- Atomic transactions for database methods
 - Enhanced error codes
 """
 
@@ -84,7 +83,6 @@ class AdvancedConsumer(AsyncJsonRpcWebsocketConsumer):
     - Middleware pipeline
     - RpcContext usage
     - Permission-based access control
-    - Atomic transactions
     - Enhanced error codes
     """
 
@@ -169,89 +167,38 @@ async def export_report(ctx: RpcContext, report_id: int) -> dict:
 
 
 # ------------------------------------------------------------------------------
-# Example 4: Database Methods with Transactions
-# ------------------------------------------------------------------------------
-@AdvancedConsumer.database_rpc_method(atomic=True)
-def create_user_with_profile(username: str, email: str) -> dict:
-    """Create user and profile atomically.
-
-    With atomic=True, if profile creation fails, user creation is rolled back.
-    This is a SYNC function that will be wrapped with database_sync_to_async.
-    """
-    # This would be actual Django ORM code:
-    # from myapp.models import User, Profile
-    # user = User.objects.create(username=username, email=email)
-    # profile = Profile.objects.create(user=user, bio="New user")
-    # return {"user_id": user.id, "profile_id": profile.id}
-
-    return {"user_id": 123, "profile_id": 456, "transaction": "atomic"}
-
-
-@AdvancedConsumer.database_rpc_method(atomic=False)
-def get_user_count() -> dict:
-    """Get user count (read-only, no transaction needed).
-
-    With atomic=False, avoids unnecessary transaction overhead for read-only operations.
-    """
-    # This would be actual Django ORM code:
-    # from myapp.models import User
-    # return {"count": User.objects.count()}
-
-    return {"count": 42}
-
-
-@AdvancedConsumer.database_rpc_method(using="analytics")
-def log_analytics_event(ctx: RpcContext, event_type: str, data: dict) -> dict:
-    """Log event to analytics database.
-
-    The 'using' parameter specifies which database to use (from DATABASES setting).
-    Useful for multi-database setups (primary + analytics, primary + read replica, etc.)
-    """
-    # This would be actual Django ORM code:
-    # from myapp.models import AnalyticsEvent
-    # event = AnalyticsEvent.objects.using('analytics').create(
-    #     event_type=event_type,
-    #     data=data,
-    #     user_id=ctx.scope.get('user').id if ctx.scope.get('user') else None
-    # )
-    # return {"event_id": event.id}
-
-    return {"event_id": 789, "database": "analytics"}
-
-
-# ------------------------------------------------------------------------------
-# Example 5: Enhanced Error Codes
+# Example 4: Error Handling
 # ------------------------------------------------------------------------------
 @AdvancedConsumer.rpc_method()
 async def update_user(ctx: RpcContext, user_id: int, data: dict) -> dict:
-    """Update user with enhanced error handling.
+    """Update user with proper error handling.
 
-    Demonstrates using new error codes for better client error handling.
+    Demonstrates using standard error codes for error handling.
     """
-    # Validation error (client error)
+    # Input validation
     if not data.get("email"):
         raise JsonRpcError(
             ctx.rpc_id,
-            JsonRpcErrorCode.VALIDATION_ERROR,
+            JsonRpcErrorCode.INVALID_PARAMS,
             data={"field": "email", "error": "required"},
         )
 
-    # Resource not found (client error)
+    # Business logic error
     # In real code, check if user exists
     user_exists = user_id > 0
     if not user_exists:
         raise JsonRpcError(
             ctx.rpc_id,
-            JsonRpcErrorCode.RESOURCE_NOT_FOUND,
+            JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
             data={"resource": "user", "id": user_id},
         )
 
-    # State conflict (client error)
+    # Conflict check
     # Example: User already has this email
     if data.get("email") == "taken@example.com":
         raise JsonRpcError(
             ctx.rpc_id,
-            JsonRpcErrorCode.CONFLICT,
+            JsonRpcErrorCode.GENERIC_APPLICATION_ERROR,
             data={"field": "email", "error": "already exists"},
         )
 
@@ -262,7 +209,7 @@ async def update_user(ctx: RpcContext, user_id: int, data: dict) -> dict:
 async def fetch_external_data(url: str) -> dict:
     """Fetch data from external service.
 
-    Demonstrates server error codes for transient failures.
+    Demonstrates error handling for external failures.
     """
     try:
         # Simulated external API call
@@ -275,23 +222,23 @@ async def fetch_external_data(url: str) -> dict:
         if "fail" in url:
             raise JsonRpcError(
                 None,
-                JsonRpcErrorCode.EXTERNAL_SERVICE_ERROR,
-                data={"service": "external-api", "retryable": True},
+                JsonRpcErrorCode.INTERNAL_ERROR,
+                data={"service": "external-api"},
             )
 
         return {"data": "success"}
 
     except Exception as e:
-        # Database error (server error)
+        # External failure
         raise JsonRpcError(
             None,
-            JsonRpcErrorCode.EXTERNAL_SERVICE_ERROR,
-            data={"error": str(e), "retryable": True},
+            JsonRpcErrorCode.INTERNAL_ERROR,
+            data={"error": str(e)},
         )
 
 
 # ------------------------------------------------------------------------------
-# Example 6: Notifications (one-way messages)
+# Example 5: Notifications (one-way messages)
 # ------------------------------------------------------------------------------
 @AdvancedConsumer.rpc_notification()
 async def client_heartbeat(ctx: RpcContext, timestamp: float) -> None:
@@ -381,15 +328,7 @@ async def client_heartbeat(ctx: RpcContext, timestamp: float) -> None:
 #     "id": 4
 # }
 
-# 5. Create user with transaction:
-# {
-#     "jsonrpc": "2.0",
-#     "method": "create_user_with_profile",
-#     "params": {"username": "alice", "email": "alice@example.com"},
-#     "id": 5
-# }
-
-# 6. Heartbeat notification (no response):
+# 5. Heartbeat notification (no response):
 # {
 #     "jsonrpc": "2.0",
 #     "method": "client_heartbeat",
