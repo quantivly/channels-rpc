@@ -351,7 +351,7 @@ class AsyncRpcBase(RpcBase):
 
         # Lazy initialization for Django Channels consumers that don't call __init__
         if not hasattr(self, "_recent_request_ids"):
-            self._recent_request_ids: dict[str | int, float] = {}
+            self._recent_request_ids = {}  # Type already defined in __init__
             self._request_id_cooldown = 10.0
 
         current_time = time.time()
@@ -584,7 +584,7 @@ class AsyncRpcBase(RpcBase):
         if isinstance(exception, JsonRpcError):
             # Re-raise JSON-RPC errors as-is
             return exception.as_dict()
-        elif isinstance(exception, (ValueError, TypeError, KeyError, AttributeError)):
+        elif isinstance(exception, ValueError | TypeError | KeyError | AttributeError):
             # Expected application-level errors (domain logic errors)
             # Note: RuntimeError intentionally NOT caught here - it indicates bugs
             logger.info("Application error in RPC method: %s", exception)

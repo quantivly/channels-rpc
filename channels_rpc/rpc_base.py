@@ -973,7 +973,7 @@ class RpcBase:
         if isinstance(exception, JsonRpcError):
             # Re-raise JSON-RPC errors as-is
             return exception.as_dict()
-        elif isinstance(exception, (ValueError, TypeError, KeyError, AttributeError)):
+        elif isinstance(exception, ValueError | TypeError | KeyError | AttributeError):
             # Expected application-level errors (domain logic errors)
             # Note: RuntimeError intentionally NOT caught here - it indicates bugs
             logger.info("Application error in RPC method: %s", exception)

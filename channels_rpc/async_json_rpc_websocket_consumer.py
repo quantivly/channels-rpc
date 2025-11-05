@@ -121,7 +121,10 @@ class AsyncJsonRpcWebsocketConsumer(AsyncJsonWebsocketConsumer, AsyncRpcBase):
             except Exception:
                 # Last resort - hardcoded minimal error
                 logger.exception("Failed to encode error response")
-                minimal = '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}'
+                minimal = (
+                    '{"jsonrpc":"2.0","id":null,'
+                    '"error":{"code":-32603,"message":"Internal error"}}'
+                )
                 return minimal
 
     async def receive(self, text_data=None, bytes_data=None):
