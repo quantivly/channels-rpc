@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from channels_rpc import logs
