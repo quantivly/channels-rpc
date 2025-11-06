@@ -1069,9 +1069,42 @@ class RpcBase:
             return error, is_notification
 
         # Type narrowing: If error is None, processed_data must be valid
-        assert processed_data is not None
+        # Note: Using explicit checks instead of assert for production safety
+        # (asserts are removed with -O optimization flag)
+        if processed_data is None:
+            logger.error(
+                "Middleware returned None for both data and error - this indicates a "
+                "middleware bug. Method: %s, RPC ID: %s",
+                method_name,
+                rpc_id,
+            )
+            return (
+                generate_error_response(
+                    rpc_id=rpc_id,
+                    code=JsonRpcErrorCode.INTERNAL_ERROR,
+                    message="Internal server error",
+                    data={"error": "Request data missing after middleware processing"},
+                ),
+                is_notification,
+            )
+
         data = processed_data  # Now data is guaranteed to be non-None
-        assert isinstance(method_name, str)
+
+        if not isinstance(method_name, str):
+            logger.error(
+                "method_name is not a string after validation: %s (type: %s)",
+                method_name,
+                type(method_name).__name__,
+            )
+            return (
+                generate_error_response(
+                    rpc_id=rpc_id,
+                    code=JsonRpcErrorCode.INTERNAL_ERROR,
+                    message="Internal server error",
+                    data={"error": "Invalid method name type"},
+                ),
+                is_notification,
+            )
 
         try:
             result = self._process_call(data, is_notification=is_notification)
