@@ -818,7 +818,7 @@ class RpcBase:
         rpc_id: str | int | float | None,
         method_name: str,
         start_time: float,
-        is_notification: bool,  # noqa: ARG002
+        is_notification: bool,  # noqa: ARG002, FBT001
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """Apply request middleware chain.
 
@@ -1096,8 +1096,10 @@ class RpcBase:
             TypeError,
             KeyError,
             AttributeError,
-            Exception,
         ) as e:
+            # Handle application-level errors only
+            # Note: Exception removed from tuple to avoid masking system exceptions
+            # Unexpected errors will propagate and be logged by outer error handlers
             result = self._handle_rpc_exception(e, rpc_id, method_name, start_time)
 
         if rpc_id:
