@@ -7,25 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-- **`@database_rpc_method()` decorator**: Removed unused decorator that combined `rpc_method()` with `database_sync_to_async()`. QSpace server uses `database_sync_to_async` directly, and this decorator was not used by any downstream packages. Removed ~339 lines of code including implementation, tests, examples, and documentation. Users should use Django Channels' `database_sync_to_async` directly for database access in async methods.
-- **Unused error codes**: Removed 7 error codes that were added in 1.0.0 but never used: `VALIDATION_ERROR` (-32002), `RESOURCE_NOT_FOUND` (-32003), `PERMISSION_DENIED` (-32004), `CONFLICT` (-32005), `RATE_LIMIT_EXCEEDED` (-32006), `DATABASE_ERROR` (-32010), `EXTERNAL_SERVICE_ERROR` (-32011). These codes were not used by QSpace server or any downstream packages. The API now uses only standard JSON-RPC 2.0 error codes plus `GENERIC_APPLICATION_ERROR`, `REQUEST_TOO_LARGE`, and `PARSE_RESULT_ERROR`.
-- **Error categorization utilities**: Removed `is_client_error()` and `is_server_error()` methods from `JsonRpcErrorCode` enum as they only referenced the removed error codes.
-
-### Added
-- **Server-side request ID collision detection**: Added tracking of recent request IDs with 10-second cooldown period to prevent replay attacks and request ID reuse issues. Uses lazy initialization for compatibility with Django Channels consumer lifecycle.
-- **Per-IP connection rate limiting**: Added sliding window rate limiter to prevent connection flood attacks (10 attempts per 60 seconds per IP address). Configured at class level for consistency across all consumer instances.
-- **Certificate expiry validation**: Added validation of client certificate expiry dates on connection establishment. Rejects expired or not-yet-valid certificates with WebSocket close code 4002.
-- **DoS protection for async consumers**: Added message size validation before JSON parsing in `AsyncJsonRpcWebsocketConsumer.receive()` to prevent memory exhaustion attacks.
-- **Error log sanitization**: Added respect for `SANITIZE_ERRORS` configuration in all error logging paths. Production mode now logs error types without stack traces to prevent information disclosure.
-
-### Changed
-- **Removed mutable module constants**: Refactored `limits.py` to use `get_config().limits` pattern throughout, eliminating the anti-pattern of mutating "constants" at runtime. Constants no longer exported from public API - use config object instead.
-- **Production-safe defaults**: Set `SANITIZE_ERRORS=True` as default to prevent stack trace leakage in production environments.
+## [1.0.1] - 2025-11-10
 
 ### Fixed
-- **Exception handling in RPC processing**: Removed overly broad `Exception` from exception handler in `_intercept_call()`. Now only catches specific application-level exceptions (`JsonRpcError`, `ValueError`, `TypeError`, `KeyError`, `AttributeError`), allowing system exceptions and unexpected errors to propagate correctly for proper debugging and error handling.
-- **Middleware error handling**: Fixed middleware exception handlers to respect `SANITIZE_ERRORS` configuration. Stack traces no longer leaked in production mode for middleware failures.
+- **Exception handling in sync RPC handler** (ENG-1343): Fixed overly broad exception handling in `rpc_base.py` sync RPC handler. Removed generic `Exception` from the exception tuple to match the async version, ensuring that system exceptions (SystemExit, KeyboardInterrupt, MemoryError) and unexpected errors propagate correctly instead of being masked as application errors. Also added missing `Callable` import to `async_rpc_base.py`.
+- **Production reliability with assert statements** (ENG-1345): Replaced assert statements with explicit runtime checks in RPC handlers. Assert statements are removed when Python runs with the `-O` optimization flag, which could cause silent failures in production. Now uses proper conditional checks with `JsonRpcError` exceptions to ensure consistent behavior regardless of optimization settings.
 
 ## [1.0.0] - 2025-11-04
 
